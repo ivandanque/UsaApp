@@ -1,4 +1,7 @@
 import '../../domain/entities/chat_message.dart';
+import '../../domain/entities/chat_attachment.dart';
+import '../../../../core/database/app_database.dart';
+import 'dart:convert';
 
 class ChatMessageModel extends ChatMessage {
   const ChatMessageModel({
@@ -8,6 +11,7 @@ class ChatMessageModel extends ChatMessage {
     required super.sender,
     required super.content,
     required super.sentAt,
+    super.attachments = const [],
   });
 
   factory ChatMessageModel.fromEntity(ChatMessage entity) {
@@ -18,11 +22,13 @@ class ChatMessageModel extends ChatMessage {
       sender: entity.sender,
       content: entity.content,
       sentAt: entity.sentAt,
+      attachments: entity.attachments.toList(growable: false),
     );
   }
 
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {
     final sentAtRaw = json['sentAt'];
+    final attachmentsRaw = json['attachments'];
     return ChatMessageModel(
       id: json['id'] as String,
       conversationId: json['conversationId'] as String,
@@ -32,6 +38,12 @@ class ChatMessageModel extends ChatMessage {
       sentAt: sentAtRaw is String
           ? DateTime.tryParse(sentAtRaw)?.toUtc() ?? DateTime.now().toUtc()
           : DateTime.now().toUtc(),
+      attachments: attachmentsRaw is List
+          ? attachmentsRaw
+                .whereType<Map<String, dynamic>>()
+                .map(ChatAttachment.fromJson)
+                .toList(growable: false)
+          : const [],
     );
   }
 
@@ -43,6 +55,7 @@ class ChatMessageModel extends ChatMessage {
       sender: sender,
       content: content,
       sentAt: sentAt,
+      attachments: attachments,
     );
   }
 
@@ -54,6 +67,36 @@ class ChatMessageModel extends ChatMessage {
       'sender': sender,
       'content': content,
       'sentAt': sentAt.toUtc().toIso8601String(),
+      'attachments': attachments.map((a) => a.toJson()).toList(),
     };
+  }
+
+  factory ChatMessageModel.fromEntry(ChatMessageEntry entry) {
+    // ChatMessageEntry.attachments is a String (JSON) in the DB schema
+    List<ChatAttachment> attachments = const [];
+    try {
+      final raw = entry.attachments;
+      if (raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          attachments = decoded
+              .whereType<Map<String, dynamic>>()
+              .map(ChatAttachment.fromJson)
+              .toList(growable: false);
+        }
+      }
+    } catch (_) {
+      attachments = const [];
+    }
+
+    return ChatMessageModel(
+      id: entry.id,
+      conversationId: entry.conversationId,
+      senderId: entry.senderId,
+      sender: entry.sender,
+      content: entry.content,
+      sentAt: entry.sentAt,
+      attachments: attachments,
+    );
   }
 }

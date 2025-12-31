@@ -39,6 +39,7 @@ class ChatMessages extends Table {
   TextColumn get sender => text()();
   TextColumn get content => text()();
   DateTimeColumn get sentAt => dateTime()();
+  TextColumn get attachments => text().withDefault(const Constant('[]'))();
 
   @override
   Set<Column<Object>> get primaryKey => {id};

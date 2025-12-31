@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 
 import '../../../../app/di/app_dependencies.dart';
 import '../../../p2p/data/services/p2p_service.dart';
 import '../../../p2p/presentation/controllers/p2p_session_controller.dart';
-import '../../data/datasources/conversation_store.dart';
+import '../../data/datasources/drift_conversation_data_source.dart';
 import '../../domain/entities/conversation.dart';
 import 'chat_page.dart';
 
@@ -23,10 +25,13 @@ class ConversationModePage extends StatefulWidget {
 class _ConversationModePageState extends State<ConversationModePage> {
   late final P2pSessionController _controller;
   late final bool _ownsController;
-  late final ConversationStore _conversationStore;
+  late DriftConversationDataSource _conversationStore;
+  List<Conversation> _conversations = <Conversation>[];
+  StreamSubscription<List<Conversation>>? _conversationsSub;
   Conversation? _selectedConversation;
   bool _hasAutoOpenedForSession = false;
 
+  @override
   @override
   void initState() {
     super.initState();
@@ -35,6 +40,11 @@ class _ConversationModePageState extends State<ConversationModePage> {
         AppDependencies.instance.createP2pSessionController();
     _ownsController = widget._controller == null;
     _conversationStore = AppDependencies.instance.conversationStore;
+    // Always refresh the subscription on page open
+    _conversationsSub?.cancel();
+    _conversationsSub = _conversationStore.watchAll().listen((list) {
+      setState(() => _conversations = list);
+    });
   }
 
   @override
@@ -42,6 +52,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
     if (_ownsController) {
       _controller.dispose();
     }
+    _conversationsSub?.cancel();
     super.dispose();
   }
 
@@ -229,7 +240,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
   }
 
   Conversation? _findConversationById(String id) {
-    for (final conversation in _conversationStore.current) {
+    for (final conversation in _conversations) {
       if (conversation.id == id) {
         return conversation;
       }
@@ -242,8 +253,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
     if (current == null) {
       return;
     }
-
-    final matches = _conversationStore.current
+    final matches = _conversations
         .where((candidate) => candidate.id == current.id)
         .toList();
     if (matches.isEmpty) {
@@ -276,7 +286,7 @@ class _ConversationPickerSheet extends StatefulWidget {
     this.selectedConversationId,
   });
 
-  final ConversationStore store;
+  final DriftConversationDataSource store;
   final String? selectedConversationId;
 
   @override
@@ -338,7 +348,7 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
                     stream: _conversationsStream,
                     builder: (context, snapshot) {
                       final conversations =
-                          snapshot.data ?? widget.store.current;
+                          snapshot.data ?? const <Conversation>[];
                       if (conversations.isEmpty) {
                         return const Center(
                           child: Padding(
@@ -483,10 +493,9 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
     }
 
     if (widget.selectedConversationId == conversation.id) {
-      final updated = widget.store.current
-          .where((item) => item.id == conversation.id)
-          .toList();
-      Navigator.of(context).pop(updated.isNotEmpty ? updated.first : null);
+      final navigator = Navigator.of(context);
+      final updated = await widget.store.getConversationById(conversation.id);
+      navigator.pop(updated);
     }
   }
 

@@ -1,4 +1,4 @@
-import 'package:drift/native.dart';
+// removed unused import
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:usaapp/src/app/di/app_dependencies.dart';
@@ -10,7 +10,7 @@ void main() {
   setUpAll(() async {
     TestWidgetsFlutterBinding.ensureInitialized();
     SharedPreferences.setMockInitialValues(const <String, Object>{});
-    await AppDependencies.instance.init(executor: NativeDatabase.memory());
+    await AppDependencies.instance.initForTestsMinimal();
   });
 
   group('OnboardingPage', () {

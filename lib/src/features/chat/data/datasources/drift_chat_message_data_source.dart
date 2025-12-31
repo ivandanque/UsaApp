@@ -1,22 +1,56 @@
 import 'dart:async';
+import 'dart:convert';
 
 import '../../../../core/database/app_database.dart';
+import 'chat_message_query_service.dart';
 import '../models/chat_message_model.dart';
+import '../../domain/entities/chat_attachment.dart';
 
 /// Data source for chat messages using drift (SQLite).
 ///
 /// Replaces [PersistentChatMessageDataSource] with SQLite-backed storage
 /// that supports efficient pagination and search.
 class DriftChatMessageDataSource {
-  DriftChatMessageDataSource(this._db);
+  DriftChatMessageDataSource(this._db, this._queryService);
 
   final AppDatabase _db;
+  final ChatMessageQueryService? _queryService;
+  // Cache per-conversation broadcast streams to avoid repeatedly
+  // opening/closing Drift query streams which can schedule timers
+  // (observed as pending timers in widget tests). Keeping a cached
+  // broadcast stream avoids the query being closed when a widget
+  // unmounts, removing the timer race in tests.
+  final Map<String, Stream<List<ChatMessageModel>>> _cachedMessageStreams = {};
 
   /// Watch all messages for a conversation.
   Stream<List<ChatMessageModel>> watchMessages(String conversationId) {
-    return _db
-        .watchMessages(conversationId)
-        .map((entries) => entries.map(_entryToModel).toList(growable: false));
+    // Delegate to the long-lived query service if available; otherwise
+    // fall back to creating an on-demand stream.
+    if (_queryService != null) {
+      return _queryService.watch(conversationId);
+    }
+    return _cachedMessageStreams.putIfAbsent(conversationId, () {
+      final stream = Stream<List<ChatMessageModel>>.multi((controller) {
+        StreamSubscription<List<ChatMessageModel>>? sub;
+        sub = _db
+            .watchMessages(conversationId)
+            .map(
+              (entries) => entries.map(_entryToModel).toList(growable: false),
+            )
+            .listen(
+              (data) {
+                controller.add(data);
+              },
+              onError: (Object e, StackTrace? st) {
+                controller.addError(e, st);
+              },
+            );
+        controller.onCancel = () async {
+          await sub?.cancel();
+        };
+      }, isBroadcast: true);
+      return stream;
+    });
   }
 
   /// Watch messages with pagination (most recent first).
@@ -45,9 +79,15 @@ class DriftChatMessageDataSource {
   }
 
   /// Save a message.
-  Future<void> saveMessage(String conversationId, ChatMessageModel message) {
-    return _db.upsertMessage(_modelToEntry(message));
+  Future<void> saveMessage(
+    String conversationId,
+    ChatMessageModel message,
+  ) async {
+    await _db.upsertMessage(_modelToEntry(message));
+    return;
   }
+
+  // DEBUG helper: return current message count for a conversation
 
   /// Save multiple messages in batch (for migration/sync).
   Future<void> saveMessagesBatch(List<ChatMessageModel> messages) {
@@ -91,6 +131,7 @@ class DriftChatMessageDataSource {
       sender: entry.sender,
       content: entry.content,
       sentAt: entry.sentAt,
+      attachments: _decodeAttachments(entry.attachments),
     );
   }
 
@@ -102,6 +143,29 @@ class DriftChatMessageDataSource {
       sender: model.sender,
       content: model.content,
       sentAt: model.sentAt,
+      attachments: _encodeAttachments(model.attachments),
     );
+  }
+
+  List<ChatAttachment> _decodeAttachments(String? raw) {
+    if (raw == null || raw.isEmpty) return const <ChatAttachment>[];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is List) {
+        return decoded
+            .whereType<Map<String, dynamic>>()
+            .map(ChatAttachment.fromJson)
+            .toList(growable: false);
+      }
+    } catch (_) {}
+    return const <ChatAttachment>[];
+  }
+
+  String _encodeAttachments(List<ChatAttachment> attachments) {
+    try {
+      return jsonEncode(attachments.map((a) => a.toJson()).toList());
+    } catch (_) {
+      return '[]';
+    }
   }
 }

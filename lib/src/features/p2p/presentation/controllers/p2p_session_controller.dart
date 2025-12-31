@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
+
+import 'package:usaapp/src/app/di/app_dependencies.dart';
+import 'package:flutter_p2p_connection/flutter_p2p_connection.dart' as p2p_pkg;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 
 import '../../../chat/domain/entities/chat_message_payload.dart';
 import '../../../chat/domain/entities/conversation.dart';
-import '../../../chat/data/datasources/conversation_store.dart';
+import '../../../chat/data/datasources/drift_conversation_data_source.dart';
 import '../../data/services/p2p_service.dart';
 import '../../data/services/latency_probe_service.dart';
 
@@ -16,14 +20,14 @@ const String _conversationRequestMessage = '__usaapp_request_conversation__';
 class P2pSessionController extends ChangeNotifier {
   P2pSessionController({
     required P2pService p2pService,
-    ConversationStore? conversationStore,
+    DriftConversationDataSource? conversationStore,
     LatencyProbeService? latencyProbeService,
   }) : _p2pService = p2pService,
        _conversationStore = conversationStore,
        _latencyProbeService = latencyProbeService;
 
   final P2pService _p2pService;
-  final ConversationStore? _conversationStore;
+  final DriftConversationDataSource? _conversationStore;
   final LatencyProbeService? _latencyProbeService;
 
   P2pSessionRole? _role;
@@ -512,6 +516,64 @@ class P2pSessionController extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('Unable to announce active conversation: $e');
+    }
+  }
+
+  /// Share a file over the underlying P2P transport and announce it to peers.
+  /// Returns the transport's file info if sharing was initiated, or null on failure.
+  Future<p2p_pkg.P2pFileInfo?> sendAttachment(
+    File file, {
+    String? targetClientId,
+  }) async {
+    final roleSnapshot = _role;
+    if (roleSnapshot == null) {
+      _setError('Select a role before sending files.');
+      return null;
+    }
+
+    try {
+      if (roleSnapshot == P2pSessionRole.host) {
+        final host = await _p2pService.ensureHostInitialized();
+        final info = await host.broadcastFile(file);
+        if (info != null) {
+          final payload = ChatMessagePayload(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            conversationId: _activeConversationId ?? 'default',
+            conversationTitle: _activeConversationTitle ?? 'Conversation',
+            senderId: AppDependencies.instance.peerIdentity.id,
+            senderName: AppDependencies.instance.peerIdentity.displayName,
+            content: file.uri.pathSegments.isNotEmpty
+                ? file.uri.pathSegments.last
+                : file.path,
+            sentAt: DateTime.now().toUtc(),
+            files: [info.toJson()],
+          );
+          await sendChatMessage(payload);
+        }
+        return info;
+      } else {
+        final client = await _p2pService.ensureClientInitialized();
+        final info = await client.broadcastFile(file);
+        if (info != null) {
+          final payload = ChatMessagePayload(
+            id: DateTime.now().microsecondsSinceEpoch.toString(),
+            conversationId: _activeConversationId ?? 'default',
+            conversationTitle: _activeConversationTitle ?? 'Conversation',
+            senderId: AppDependencies.instance.peerIdentity.id,
+            senderName: AppDependencies.instance.peerIdentity.displayName,
+            content: file.uri.pathSegments.isNotEmpty
+                ? file.uri.pathSegments.last
+                : file.path,
+            sentAt: DateTime.now().toUtc(),
+            files: [info.toJson()],
+          );
+          await sendChatMessage(payload);
+        }
+        return info;
+      }
+    } catch (e) {
+      _setError('Unable to share file: $e');
+      return null;
     }
   }
 

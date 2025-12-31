@@ -31,6 +31,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
 
   // Profile setup state
   bool _showProfileSetup = false;
+  bool _isSavingProfile = false;
   final _displayNameController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _groupNameController = TextEditingController();
@@ -148,31 +149,43 @@ class _OnboardingPageState extends State<OnboardingPage> {
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
 
+    setState(() => _isSavingProfile = true);
+
     final identityService = AppDependencies.instance.peerIdentityService;
 
-    // Set display name first
-    await identityService.setDisplayName(_displayNameController.text.trim());
+    try {
+      // Set display name first
+      await identityService.setDisplayName(_displayNameController.text.trim());
 
-    // Then update other profile fields
-    await identityService.updateProfile(
-      name: _fullNameController.text.trim().isEmpty
-          ? null
-          : _fullNameController.text.trim(),
-      groupName: _groupNameController.text.trim().isEmpty
-          ? null
-          : _groupNameController.text.trim(),
-      role: _selectedRole,
-    );
+      // Then update other profile fields
+      await identityService.updateProfile(
+        name: _fullNameController.text.trim().isEmpty
+            ? null
+            : _fullNameController.text.trim(),
+        groupName: _groupNameController.text.trim().isEmpty
+            ? null
+            : _groupNameController.text.trim(),
+        role: _selectedRole,
+      );
 
-    // Update app dependencies with new identity
-    await AppDependencies.instance.updatePeerDisplayName(
-      _displayNameController.text.trim(),
-    );
+      // Update app dependencies with new identity
+      await AppDependencies.instance.updatePeerDisplayName(
+        _displayNameController.text.trim(),
+      );
 
-    if (mounted) {
-      Navigator.of(
-        context,
-      ).pushNamedAndRemoveUntil(HomePage.routeName, (route) => false);
+      if (mounted) {
+        Navigator.of(
+          context,
+        ).pushNamedAndRemoveUntil(HomePage.routeName, (route) => false);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Error saving profile: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _isSavingProfile = false);
     }
   }
 
@@ -241,10 +254,16 @@ class _OnboardingPageState extends State<OnboardingPage> {
               _buildProfilePreview(),
               const SizedBox(height: 32),
               FilledButton(
-                onPressed: _saveProfile,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  child: Text('Save Profile'),
+                onPressed: _isSavingProfile ? null : _saveProfile,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: _isSavingProfile
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save Profile'),
                 ),
               ),
               const SizedBox(height: 12),

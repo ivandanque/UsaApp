@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../../../core/models/peer_identity.dart';
 import 'chat_message.dart';
+import 'chat_attachment.dart';
 
 class ChatMessagePayload {
   const ChatMessagePayload({
@@ -16,6 +17,7 @@ class ChatMessagePayload {
     this.senderRole,
     this.senderGroupName,
     this.senderProfileImageBase64,
+    this.files,
   });
 
   final String id;
@@ -31,6 +33,7 @@ class ChatMessagePayload {
   final String? senderRole; // Stored as string for serialization
   final String? senderGroupName;
   final String? senderProfileImageBase64;
+  final List<Map<String, dynamic>>? files;
 
   static const int _protocolVersion = 2; // Incremented for profile support
 
@@ -51,6 +54,9 @@ class ChatMessagePayload {
       senderRole: senderIdentity?.role.name,
       senderGroupName: senderIdentity?.groupName,
       senderProfileImageBase64: senderIdentity?.profileImage,
+      files: message.attachments.isEmpty
+          ? null
+          : message.attachments.map((a) => a.toJson()).toList(growable: false),
     );
   }
 
@@ -62,6 +68,12 @@ class ChatMessagePayload {
       sender: senderName,
       content: content,
       sentAt: sentAt,
+      attachments: files == null
+          ? const []
+          : files!
+                .whereType<Map<String, dynamic>>()
+                .map((m) => ChatAttachment.fromJson(m))
+                .toList(growable: false),
     );
   }
 
@@ -97,6 +109,7 @@ class ChatMessagePayload {
       if (senderGroupName != null) 'senderGroupName': senderGroupName,
       if (senderProfileImageBase64 != null)
         'senderProfileImageBase64': senderProfileImageBase64,
+      if (files != null) 'files': files,
     };
   }
 
@@ -145,6 +158,7 @@ class ChatMessagePayload {
       final senderGroupName = decoded['senderGroupName'] as String?;
       final senderProfileImageBase64 =
           decoded['senderProfileImageBase64'] as String?;
+      final filesRaw = decoded['files'];
 
       return ChatMessagePayload(
         id: id,
@@ -158,6 +172,12 @@ class ChatMessagePayload {
         senderRole: senderRole,
         senderGroupName: senderGroupName,
         senderProfileImageBase64: senderProfileImageBase64,
+        files: filesRaw is List
+            ? filesRaw
+                  .whereType<Map<String, dynamic>>()
+                  .map((m) => Map<String, dynamic>.from(m))
+                  .toList(growable: false)
+            : null,
       );
     } catch (_) {
       return null;

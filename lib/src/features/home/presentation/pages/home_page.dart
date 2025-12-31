@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../chat/presentation/pages/conversation_mode_page.dart';
-import '../../../chat/presentation/pages/chats_library_page.dart';
+import '../../../chat/presentation/pages/chats_history_page.dart';
 import '../../../settings/presentation/pages/profile_page.dart';
 import '../../../settings/presentation/pages/settings_page.dart';
 
@@ -31,7 +31,7 @@ class HomePage extends StatelessWidget {
             title: 'View Chats',
             subtitle: 'Browse saved conversations, rename them, or clear logs.',
             onTap: () =>
-                Navigator.of(context).pushNamed(ChatsLibraryPage.routeName),
+                Navigator.of(context).pushNamed(ChatsHistoryPage.routeName),
           ),
           _DestinationTile(
             icon: Icons.message_outlined,

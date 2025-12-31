@@ -334,6 +334,7 @@ void main() {
           sender: 'Alice',
           content: 'Hello!',
           sentAt: now,
+          attachments: '[]',
         ),
       );
 
@@ -364,6 +365,7 @@ void main() {
             sender: 'Alice',
             content: 'Message $i',
             sentAt: now.add(Duration(seconds: i)),
+            attachments: '[]',
           ),
         );
       }
@@ -403,6 +405,7 @@ void main() {
           sender: 'Alice',
           content: 'Hello world!',
           sentAt: now,
+          attachments: '[]',
         ),
       );
 
@@ -414,6 +417,7 @@ void main() {
           sender: 'Alice',
           content: 'Goodbye!',
           sentAt: now.add(const Duration(seconds: 1)),
+          attachments: '[]',
         ),
       );
 
@@ -464,6 +468,7 @@ void main() {
           sender: 'Alice',
           content: 'Hello!',
           sentAt: now,
+          attachments: '[]',
         ),
       );
 

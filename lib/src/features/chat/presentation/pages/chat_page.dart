@@ -1,14 +1,22 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:path/path.dart' as p;
+
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/di/app_dependencies.dart';
 import '../../../../core/widgets/profile_avatar.dart';
+import '../../../../core/utils/logger.dart';
 import '../../../p2p/data/services/p2p_service.dart';
 import '../../../p2p/presentation/controllers/p2p_session_controller.dart';
+import '../../domain/entities/chat_attachment.dart';
 import '../../../p2p/presentation/widgets/latency_diagnostics_sheet.dart';
 import '../../domain/entities/chat_message_payload.dart';
 import '../../domain/entities/conversation.dart';
+import '../../../../core/models/peer_identity.dart';
 import '../controllers/chat_controller.dart';
 
 class ChatPage extends StatefulWidget {
@@ -17,6 +25,7 @@ class ChatPage extends StatefulWidget {
     required this.conversation,
     this.controller,
     this.p2pController,
+    this.testPeerIdentity,
   });
 
   static const routeName = '/chat/session';
@@ -24,6 +33,7 @@ class ChatPage extends StatefulWidget {
   final Conversation conversation;
   final ChatController? controller;
   final P2pSessionController? p2pController;
+  final PeerIdentity? testPeerIdentity;
 
   @override
   State<ChatPage> createState() => _ChatPageState();
@@ -104,6 +114,36 @@ class _ChatPageState extends State<ChatPage> {
             icon: const Icon(Icons.speed_outlined),
             tooltip: 'Latency diagnostics',
             onPressed: _showLatencyDiagnostics,
+          ),
+          // Debug: print DB message counts and recent message IDs
+          IconButton(
+            icon: const Icon(Icons.bug_report),
+            tooltip: 'Debug messages',
+            onPressed: () async {
+              try {
+                final logger = const Logger('ChatPage.debug');
+                final ds = AppDependencies.instance.driftChatMessageDataSource;
+                if (ds == null) {
+                  logger.info('driftChatMessageDataSource is null');
+                  return;
+                }
+                final count = await ds.getMessageCount(
+                  _controller.conversation.id,
+                );
+                // Fetch recent messages before 'now + 1 day' to include all
+                final recent = await ds.getMessagesBefore(
+                  _controller.conversation.id,
+                  DateTime.now().toUtc().add(const Duration(days: 1)),
+                  limit: 100,
+                );
+                logger.info(
+                  'conversation=${_controller.conversation.id} count=$count recentIds=${recent.map((m) => m.id).join(',')}',
+                );
+              } catch (e) {
+                final logger = const Logger('ChatPage.debug');
+                logger.error('error fetching debug info', e);
+              }
+            },
           ),
         ],
       ),
@@ -231,12 +271,107 @@ class _ChatPageState extends State<ChatPage> {
                                 ?.copyWith(color: _scaledAlpha(textColor, 0.8)),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            message.content,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodyMedium?.copyWith(color: textColor),
-                          ),
+                          // Message text
+                          if (message.content.isNotEmpty) ...[
+                            Text(
+                              message.content,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(color: textColor),
+                            ),
+                            const SizedBox(height: 4),
+                          ],
+
+                          // Attachments (images / files)
+                          if (message.attachments.isNotEmpty)
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: message.attachments.map((a) {
+                                if (a.mimeType.startsWith('image/')) {
+                                  final file = File(a.uri);
+                                  if (file.existsSync()) {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 6.0),
+                                      child: ConstrainedBox(
+                                        constraints: const BoxConstraints(
+                                          maxWidth: 200,
+                                          maxHeight: 200,
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            8,
+                                          ),
+                                          child: Image.file(
+                                            file,
+                                            fit: BoxFit.cover,
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  } else {
+                                    return Padding(
+                                      padding: const EdgeInsets.only(top: 6.0),
+                                      child: Row(
+                                        children: [
+                                          const Icon(Icons.image),
+                                          const SizedBox(width: 8),
+                                          Expanded(child: Text(a.filename)),
+                                          // Show retry button if downloads failed
+                                          if ((_controller.downloadFailures[a
+                                                      .id] ??
+                                                  0) >=
+                                              3)
+                                            IconButton(
+                                              icon: const Icon(Icons.refresh),
+                                              tooltip: 'Retry download',
+                                              onPressed: () async {
+                                                final payloadFile = {
+                                                  'id': a.id,
+                                                  'name': a.filename,
+                                                };
+                                                await _controller
+                                                    .requestAttachmentDownload(
+                                                      message.id,
+                                                      payloadFile,
+                                                    );
+                                              },
+                                            ),
+                                        ],
+                                      ),
+                                    );
+                                  }
+                                }
+
+                                // Non-image file
+                                return Padding(
+                                  padding: const EdgeInsets.only(top: 6.0),
+                                  child: Row(
+                                    children: [
+                                      const Icon(Icons.insert_drive_file),
+                                      const SizedBox(width: 8),
+                                      Expanded(child: Text(a.filename)),
+                                      if ((_controller.downloadFailures[a.id] ??
+                                              0) >=
+                                          3)
+                                        IconButton(
+                                          icon: const Icon(Icons.refresh),
+                                          tooltip: 'Retry download',
+                                          onPressed: () async {
+                                            final payloadFile = {
+                                              'id': a.id,
+                                              'name': a.filename,
+                                            };
+                                            await _controller
+                                                .requestAttachmentDownload(
+                                                  message.id,
+                                                  payloadFile,
+                                                );
+                                          },
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              }).toList(),
+                            ),
                           const SizedBox(height: 4),
                           Align(
                             alignment: Alignment.centerRight,
@@ -277,12 +412,157 @@ class _ChatPageState extends State<ChatPage> {
           ),
         ),
         const SizedBox(width: 12),
+        // File picker button (general files)
+        IconButton(
+          icon: const Icon(Icons.add),
+          tooltip: 'Attach file',
+          onPressed: () => unawaited(_handlePickFile()),
+        ),
+        // Image / video picker button
+        IconButton(
+          icon: const Icon(Icons.image),
+          tooltip: 'Attach image or video',
+          onPressed: () => unawaited(_handlePickMedia()),
+        ),
         IconButton(
           icon: const Icon(Icons.send),
           onPressed: () => unawaited(_handleSend()),
         ),
       ],
     );
+  }
+
+  Future<void> _handlePickFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(allowMultiple: false);
+      if (result == null) return;
+      final path = result.files.single.path;
+      if (path == null) return;
+      final file = File(path);
+      final info = await _p2pController.sendAttachment(file);
+      if (info == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Unable to share file')));
+        return;
+      }
+
+      // Create optimistic local message with attachment so UI updates immediately.
+      final ext = p.extension(file.path).toLowerCase();
+      final isImage = [
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.webp',
+        '.heic',
+      ].contains(ext);
+      final mime =
+          (info.metadata['mimeType'] as String?) ??
+          (isImage
+              ? 'image/${ext.replaceFirst('.', '')}'
+              : 'application/octet-stream');
+
+      final attachment = ChatAttachment(
+        id: info.id,
+        filename: info.name,
+        mimeType: mime,
+        sizeBytes: info.size != 0 ? info.size : await file.length(),
+        uri: file.path,
+      );
+
+      await _controller.sendLocalMessageWithAttachments(
+        '',
+        attachments: [attachment],
+        attachmentsAreExternal: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('File pick failed: $e')));
+    }
+  }
+
+  Future<void> _handlePickMedia() async {
+    final picker = ImagePicker();
+    final choice = await showModalBottomSheet<String?>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: const Text('Image'),
+              onTap: () => Navigator.of(context).pop('image'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.videocam),
+              title: const Text('Video'),
+              onTap: () => Navigator.of(context).pop('video'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null) return;
+
+    try {
+      XFile? picked;
+      if (choice == 'image') {
+        picked = await picker.pickImage(source: ImageSource.gallery);
+      } else if (choice == 'video') {
+        picked = await picker.pickVideo(source: ImageSource.gallery);
+      }
+      if (picked == null) return;
+      final file = File(picked.path);
+      final info = await _p2pController.sendAttachment(file);
+      if (info == null) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Unable to share media')));
+        return;
+      }
+
+      // Create optimistic local message with attachment so UI updates immediately.
+      final ext = p.extension(file.path).toLowerCase();
+      final isImage = [
+        '.png',
+        '.jpg',
+        '.jpeg',
+        '.gif',
+        '.webp',
+        '.heic',
+      ].contains(ext);
+      final mime =
+          (info.metadata['mimeType'] as String?) ??
+          (isImage
+              ? 'image/${ext.replaceFirst('.', '')}'
+              : 'application/octet-stream');
+
+      final attachment = ChatAttachment(
+        id: info.id,
+        filename: info.name,
+        mimeType: mime,
+        sizeBytes: info.size != 0 ? info.size : await file.length(),
+        uri: file.path,
+      );
+
+      await _controller.sendLocalMessageWithAttachments(
+        '',
+        attachments: [attachment],
+        attachmentsAreExternal: true,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Media pick failed: $e')));
+    }
   }
 
   Future<void> _handleSend() async {
@@ -295,7 +575,8 @@ class _ChatPageState extends State<ChatPage> {
     final payload = ChatMessagePayload.fromChatMessage(
       message,
       conversationTitle: _controller.conversation.title,
-      senderIdentity: AppDependencies.instance.peerIdentity,
+      senderIdentity:
+          widget.testPeerIdentity ?? AppDependencies.instance.peerIdentity,
     );
     await _p2pController.sendChatMessage(payload);
   }

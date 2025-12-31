@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../features/chat/domain/entities/conversation.dart';
 import '../../features/chat/presentation/pages/chat_page.dart';
-import '../../features/chat/presentation/pages/chats_library_page.dart';
+import '../../features/chat/presentation/pages/chats_history_page.dart';
 import '../../features/chat/presentation/pages/conversation_mode_page.dart';
 import '../../features/home/presentation/pages/home_page.dart';
 import '../../features/onboarding/presentation/pages/onboarding_page.dart';
@@ -16,7 +16,7 @@ class AppRouter {
     HomePage.routeName: (_) => const HomePage(),
     OnboardingPage.routeName: (_) => const OnboardingPage(),
     ConversationModePage.routeName: (_) => const ConversationModePage(),
-    ChatsLibraryPage.routeName: (_) => const ChatsLibraryPage(),
+    ChatsHistoryPage.routeName: (_) => const ChatsHistoryPage(),
     SettingsPage.routeName: (_) => const SettingsPage(),
     ProfilePage.routeName: (_) => const ProfilePage(),
   };
@@ -50,9 +50,9 @@ class AppRouter {
           builder: (_) => ChatPage(conversation: args),
           settings: settings,
         );
-      case ChatsLibraryPage.routeName:
+      case ChatsHistoryPage.routeName:
         return MaterialPageRoute<void>(
-          builder: (_) => const ChatsLibraryPage(),
+          builder: (_) => const ChatsHistoryPage(),
           settings: settings,
         );
       case SettingsPage.routeName:

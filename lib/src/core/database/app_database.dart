@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
+import '../utils/logger.dart';
 
 import 'tables.dart';
 
@@ -14,6 +15,8 @@ part 'app_database.g.dart';
 @DriftDatabase(tables: [ChatRooms, Conversations, ChatMessages, SyncMetadata])
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
+
+  final Logger _logger = const Logger('AppDatabase');
 
   @override
   int get schemaVersion => 1;
@@ -92,6 +95,9 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete a conversation and its messages.
   Future<void> deleteConversation(String id) async {
+    try {
+      _logger.info('[AppDatabase] deleteConversation id=$id');
+    } catch (_) {}
     await (delete(
       chatMessages,
     )..where((t) => t.conversationId.equals(id))).go();
@@ -142,11 +148,21 @@ class AppDatabase extends _$AppDatabase {
 
   /// Insert or update a message.
   Future<void> upsertMessage(ChatMessageEntry message) {
+    try {
+      _logger.info(
+        '[AppDatabase] upsertMessage id=${message.id} convo=${message.conversationId} db=$hashCode',
+      );
+    } catch (_) {}
     return into(chatMessages).insertOnConflictUpdate(message);
   }
 
   /// Insert multiple messages in a batch (for migration/sync).
   Future<void> insertMessagesBatch(List<ChatMessageEntry> messages) async {
+    try {
+      _logger.info(
+        '[AppDatabase] insertMessagesBatch count=${messages.length}',
+      );
+    } catch (_) {}
     await batch((batch) {
       batch.insertAllOnConflictUpdate(chatMessages, messages);
     });
@@ -154,6 +170,11 @@ class AppDatabase extends _$AppDatabase {
 
   /// Delete all messages in a conversation.
   Future<int> clearConversationMessages(String conversationId) {
+    try {
+      _logger.info(
+        '[AppDatabase] clearConversationMessages convo=$conversationId',
+      );
+    } catch (_) {}
     return (delete(
       chatMessages,
     )..where((t) => t.conversationId.equals(conversationId))).go();

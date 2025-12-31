@@ -73,6 +73,59 @@ class DriftConversationDataSource {
     return newConversation;
   }
 
+  /// Create a new conversation with a generated id.
+  Future<Conversation> createConversation(String title) async {
+    final id = _generateId();
+    final now = DateTime.now().toUtc();
+    final conversation = Conversation(
+      id: id,
+      title: title.trim().isEmpty ? 'Conversation' : title.trim(),
+      createdAt: now,
+      updatedAt: now,
+    );
+    await _db.upsertConversation(_conversationToEntry(conversation));
+    return conversation;
+  }
+
+  /// Update the conversation's updatedAt timestamp (touch).
+  Future<void> touchConversation(String id) async {
+    final existing = await _db.getConversationById(id);
+    if (existing == null) return;
+    final updated = Conversation(
+      id: existing.id,
+      title: existing.title,
+      createdAt: existing.createdAt,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _db.upsertConversation(_conversationToEntry(updated));
+  }
+
+  /// Rename a conversation (update title and updatedAt).
+  Future<void> renameConversation({
+    required String id,
+    required String newTitle,
+  }) async {
+    final existing = await _db.getConversationById(id);
+    if (existing == null) return;
+    final updated = Conversation(
+      id: existing.id,
+      title: newTitle.trim().isEmpty ? existing.title : newTitle.trim(),
+      createdAt: existing.createdAt,
+      updatedAt: DateTime.now().toUtc(),
+    );
+    await _db.upsertConversation(_conversationToEntry(updated));
+  }
+
+  String _generateId() {
+    const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+    final random = DateTime.now().microsecondsSinceEpoch;
+    final buffer = StringBuffer();
+    for (var i = 0; i < 12; i++) {
+      buffer.write(alphabet[(random + i) % alphabet.length]);
+    }
+    return buffer.toString();
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // CONVERTERS
   // ─────────────────────────────────────────────────────────────────────────

@@ -171,6 +171,9 @@ class ChatDataMigrationService {
                     sender: model.sender,
                     content: model.content,
                     sentAt: model.sentAt,
+                    attachments: jsonEncode(
+                      model.attachments.map((a) => a.toJson()).toList(),
+                    ),
                   ),
                 );
               } catch (_) {

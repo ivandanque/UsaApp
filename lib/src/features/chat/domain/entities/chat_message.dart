@@ -1,3 +1,5 @@
+import 'chat_attachment.dart';
+
 class ChatMessage {
   const ChatMessage({
     required this.id,
@@ -6,6 +8,7 @@ class ChatMessage {
     required this.sender,
     required this.content,
     required this.sentAt,
+    this.attachments = const [],
   });
 
   final String id;
@@ -14,6 +17,7 @@ class ChatMessage {
   final String sender;
   final String content;
   final DateTime sentAt;
+  final List<ChatAttachment> attachments;
 
   ChatMessage copyWith({
     String? id,
@@ -22,6 +26,7 @@ class ChatMessage {
     String? sender,
     String? content,
     DateTime? sentAt,
+    List<ChatAttachment>? attachments,
   }) {
     return ChatMessage(
       id: id ?? this.id,
@@ -30,6 +35,7 @@ class ChatMessage {
       sender: sender ?? this.sender,
       content: content ?? this.content,
       sentAt: sentAt ?? this.sentAt,
+      attachments: attachments ?? this.attachments,
     );
   }
 }

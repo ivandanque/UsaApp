@@ -5,17 +5,17 @@ import '../../data/datasources/drift_conversation_data_source.dart';
 import '../../domain/entities/conversation.dart';
 import 'conversation_history_page.dart';
 
-/// Chats library — lists saved conversations and allows create/rename/delete.
-class ChatsLibraryPage extends StatefulWidget {
-  const ChatsLibraryPage({super.key});
+/// Chats History — lists saved conversations and allows create/rename/delete.
+class ChatsHistoryPage extends StatefulWidget {
+  const ChatsHistoryPage({super.key});
 
   static const String routeName = '/chats';
 
   @override
-  State<ChatsLibraryPage> createState() => _ChatsLibraryPageState();
+  State<ChatsHistoryPage> createState() => _ChatsHistoryPageState();
 }
 
-class _ChatsLibraryPageState extends State<ChatsLibraryPage> {
+class _ChatsHistoryPageState extends State<ChatsHistoryPage> {
   late final DriftConversationDataSource _store;
   late final Stream<List<Conversation>> _conversationsStream;
   bool _isRenaming = false;
@@ -50,12 +50,7 @@ class _ChatsLibraryPageState extends State<ChatsLibraryPage> {
     );
   }
 
-  Future<void> _handleCreateConversation() async {
-    final name = await _promptForName(title: 'Create new chat');
-    final trimmed = name?.trim() ?? '';
-    if (trimmed.isEmpty) return;
-    await _store.createConversation(trimmed);
-  }
+  // _handleCreateConversation removed — creation is handled elsewhere in UI.
 
   Future<void> _deleteConversation(Conversation conversation) async {
     await _store.deleteConversation(conversation.id);
@@ -151,11 +146,6 @@ class _ChatsLibraryPageState extends State<ChatsLibraryPage> {
             },
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _handleCreateConversation,
-        tooltip: 'Create chat',
-        child: const Icon(Icons.add),
       ),
     );
   }

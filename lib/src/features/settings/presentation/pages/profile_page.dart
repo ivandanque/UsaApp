@@ -92,159 +92,169 @@ class _ProfilePageState extends State<ProfilePage> {
             IconButton(icon: const Icon(Icons.check), onPressed: _saveProfile),
         ],
       ),
-      body: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            Center(child: ProfileAvatar(identity: currentIdentity, size: 100)),
-            const SizedBox(height: 32),
-            TextFormField(
-              controller: _displayNameController,
-              decoration: const InputDecoration(
-                labelText: 'Display Name',
-                helperText: 'Name shown in chats',
-                border: OutlineInputBorder(),
+      body: SafeArea(
+        child: Form(
+          key: _formKey,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              Center(
+                child: ProfileAvatar(identity: currentIdentity, size: 100),
               ),
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Display name is required';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Full Name',
-                helperText: 'Your full name (optional)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 32),
+              TextFormField(
+                controller: _displayNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Display Name',
+                  helperText: 'Name shown in chats',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Display name is required';
+                  }
+                  return null;
+                },
               ),
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _groupNameController,
-              decoration: const InputDecoration(
-                labelText: 'Group/Class Name',
-                helperText: 'Your class or group (optional)',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Full Name',
+                  helperText: 'Your full name (optional)',
+                  border: OutlineInputBorder(),
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<UserRole>(
-              initialValue: _selectedRole,
-              decoration: const InputDecoration(
-                labelText: 'Role',
-                border: OutlineInputBorder(),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _groupNameController,
+                decoration: const InputDecoration(
+                  labelText: 'Group/Class Name',
+                  helperText: 'Your class or group (optional)',
+                  border: OutlineInputBorder(),
+                ),
               ),
-              items: UserRole.values.map((role) {
-                return DropdownMenuItem(
-                  value: role,
-                  child: Text(role.displayName),
-                );
-              }).toList(),
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _selectedRole = value;
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Profile Image',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      _profileImageBase64 != null
-                          ? 'Image selected'
-                          : 'No image selected',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: _pickImage,
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Choose Image'),
-                        ),
-                        if (_profileImageBase64 != null) ...[
-                          const SizedBox(width: 8),
-                          OutlinedButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _profileImageBase64 = null;
-                              });
-                            },
-                            icon: const Icon(Icons.delete_outline),
-                            label: const Text('Remove'),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<UserRole>(
+                initialValue: _selectedRole,
+                decoration: const InputDecoration(
+                  labelText: 'Role',
+                  border: OutlineInputBorder(),
+                ),
+                items: UserRole.values.map((role) {
+                  return DropdownMenuItem(
+                    value: role,
+                    child: Text(role.displayName),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedRole = value;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Profile Image',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        _profileImageBase64 != null
+                            ? 'Image selected'
+                            : 'No image selected',
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          ElevatedButton.icon(
+                            onPressed: _pickImage,
+                            icon: const Icon(Icons.photo_library),
+                            label: const Text('Choose Image'),
+                          ),
+                          if (_profileImageBase64 != null) ...[
+                            const SizedBox(width: 8),
+                            OutlinedButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _profileImageBase64 = null;
+                                });
+                              },
+                              icon: const Icon(Icons.delete_outline),
+                              label: const Text('Remove'),
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Recommended: Square image, max 500KB',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Profile Preview',
+                        style: Theme.of(context).textTheme.titleMedium,
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          ProfileAvatar(identity: currentIdentity, size: 48),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  currentIdentity.displayName,
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                                if (currentIdentity.role != UserRole.other)
+                                  Text(
+                                    currentIdentity.role.displayName,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                                if (currentIdentity.groupName != null)
+                                  Text(
+                                    currentIdentity.groupName!,
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.bodySmall,
+                                  ),
+                              ],
+                            ),
                           ),
                         ],
-                      ],
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Recommended: Square image, max 500KB',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 24),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Profile Preview',
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        ProfileAvatar(identity: currentIdentity, size: 48),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                currentIdentity.displayName,
-                                style: Theme.of(context).textTheme.titleMedium,
-                              ),
-                              if (currentIdentity.role != UserRole.other)
-                                Text(
-                                  currentIdentity.role.displayName,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                              if (currentIdentity.groupName != null)
-                                Text(
-                                  currentIdentity.groupName!,
-                                  style: Theme.of(context).textTheme.bodySmall,
-                                ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -262,12 +272,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final service = PeerIdentityService();
 
-      // Update display name
-      await AppDependencies.instance.updatePeerDisplayName(
-        _displayNameController.text,
-      );
-
-      // Update profile fields
+      // Persist all profile fields first (full name, profile image, group, role).
       await service.updateProfile(
         name: _nameController.text.isEmpty ? '' : _nameController.text,
         profileImage: _profileImageBase64 ?? '',
@@ -275,6 +280,12 @@ class _ProfilePageState extends State<ProfilePage> {
             ? ''
             : _groupNameController.text,
         role: _selectedRole,
+      );
+
+      // Then update display name and reload the in-memory identity so the
+      // AppDependencies instance reflects all changes (including the image).
+      await AppDependencies.instance.updatePeerDisplayName(
+        _displayNameController.text,
       );
 
       if (!mounted) return;

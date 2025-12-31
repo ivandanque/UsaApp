@@ -6,12 +6,12 @@ import '../../core/models/peer_identity.dart';
 import '../../core/services/chat_data_migration_service.dart';
 import '../../core/services/peer_identity_service.dart';
 import '../../core/utils/logger.dart';
-import '../../features/chat/data/datasources/chat_message_data_source.dart';
-import '../../features/chat/data/datasources/conversation_store.dart';
 import '../../features/chat/data/datasources/drift_chat_message_data_source.dart';
+import '../../features/chat/data/datasources/chat_message_query_service.dart';
 import '../../features/chat/data/datasources/drift_chat_room_data_source.dart';
 import '../../features/chat/data/datasources/drift_conversation_data_source.dart';
 import '../../features/chat/data/repositories/chat_repository_impl.dart';
+import '../../features/chat/data/models/chat_message_model.dart';
 import '../../features/chat/domain/entities/conversation.dart';
 import '../../features/chat/domain/repositories/chat_repository.dart';
 import '../../features/chat/domain/usecases/send_message.dart';
@@ -34,18 +34,17 @@ class AppDependencies {
 
   // Drift data sources (SQLite-backed)
   DriftChatMessageDataSource? _driftChatMessageDataSource;
+  // Long-lived query service owner for chat message streams
+  ChatMessageQueryService? _chatMessageQueryService;
   DriftConversationDataSource? _driftConversationDataSource;
   DriftChatRoomDataSource? _driftChatRoomDataSource;
 
-  // Legacy data sources (for migration compatibility)
-  late final ChatMessageDataSource _chatMessageDataSource;
   late final ChatRepository _chatRepository;
   late final SendMessage _sendMessage;
   late final WatchMessages _watchMessages;
   late final P2pService _p2pService;
   late final PeerIdentityService _peerIdentityService;
   late PeerIdentity _peerIdentity;
-  late final ConversationStore _conversationStore;
   late final LatencyProbeService _latencyProbeService;
   Map<String, PeerIdentity> _knownPeers = <String, PeerIdentity>{};
 
@@ -76,15 +75,18 @@ class AppDependencies {
     }
 
     // Initialize drift data sources
-    _driftChatMessageDataSource = DriftChatMessageDataSource(_database!);
+    // Create a long-lived query service that owns DB subscriptions for
+    // chat message streams and prevents repeated open/close of queries.
+    _chatMessageQueryService = ChatMessageQueryService(_database!);
+    _driftChatMessageDataSource = DriftChatMessageDataSource(
+      _database!,
+      _chatMessageQueryService,
+    );
     _driftConversationDataSource = DriftConversationDataSource(_database!);
     _driftChatRoomDataSource = DriftChatRoomDataSource(_database!);
 
-    // Keep legacy data source for backward compatibility during transition
-    _chatMessageDataSource = PersistentChatMessageDataSource(
-      sharedPreferences: sharedPreferences,
-    );
-    _chatRepository = ChatRepositoryImpl(_chatMessageDataSource);
+    // Use Drift-backed data source for messaging going forward
+    _chatRepository = ChatRepositoryImpl(_driftChatMessageDataSource!);
     _sendMessage = SendMessage(_chatRepository);
     _watchMessages = WatchMessages(_chatRepository);
 
@@ -93,14 +95,50 @@ class AppDependencies {
 
     _peerIdentityService = PeerIdentityService();
     _peerIdentity = await _peerIdentityService.getIdentity();
-    _knownPeers = await _peerIdentityService.getKnownPeers();
-
-    _conversationStore = ConversationStore(
-      sharedPreferences: sharedPreferences,
+    _knownPeers = Map<String, PeerIdentity>.from(
+      await _peerIdentityService.getKnownPeers(),
     );
-    await _conversationStore.init();
+
+    // Conversations are stored in SQLite via Drift; no SharedPreferences store.
 
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
+  }
+
+  /// Initialize a minimal set of dependencies for fast, deterministic tests.
+  /// Does not initialize the database, query service, or other long-lived
+  /// resources that may schedule timers or platform channels.
+  Future<void> initForTestsMinimal({
+    PeerIdentity? identity,
+    Map<String, PeerIdentity>? knownPeers,
+    QueryExecutor? executor,
+  }) async {
+    _logger.info('Initializing minimal test dependencies');
+
+    // Minimal peer identity and known peers cache
+    _peerIdentity =
+        identity ?? const PeerIdentity(id: 'local', displayName: 'You');
+    _knownPeers = Map<String, PeerIdentity>.from(
+      knownPeers ?? <String, PeerIdentity>{},
+    );
+
+    // Minimal services that do not start platform plugins eagerly
+    _p2pService = P2pService();
+    _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
+
+    // Optionally create a lightweight in-memory DB + conversation store for
+    // tests that need basic persistence without initializing message
+    // query services that schedule timers.
+    if (executor != null) {
+      _database = AppDatabase(executor);
+      _driftConversationDataSource = DriftConversationDataSource(_database!);
+      // Provide a fake query service that does not open DB subscriptions
+      // to avoid scheduling timers during tests.
+      _chatMessageQueryService = _FakeChatMessageQueryService(_database!);
+    }
+
+    // Peer identity service kept for API compatibility but not required to
+    // perform storage-backed operations in tests using fakes.
+    _peerIdentityService = PeerIdentityService();
   }
 
   ChatController createChatController({required Conversation conversation}) {
@@ -109,7 +147,7 @@ class AppDependencies {
       watchMessages: _watchMessages,
       identity: _peerIdentity,
       conversation: conversation,
-      conversationStore: _conversationStore,
+      conversationStore: _driftConversationDataSource!,
       rememberPeer: (PeerIdentity identity) async {
         await rememberPeer(identity);
       },
@@ -134,14 +172,39 @@ class AppDependencies {
   Map<String, PeerIdentity> get knownPeers =>
       Map<String, PeerIdentity>.unmodifiable(_knownPeers);
 
-  ConversationStore get conversationStore => _conversationStore;
+  DriftConversationDataSource get conversationStore =>
+      _driftConversationDataSource!;
 
   P2pSessionController createP2pSessionController() {
     return P2pSessionController(
       p2pService: _p2pService,
-      conversationStore: _conversationStore,
+      conversationStore: _driftConversationDataSource,
       latencyProbeService: _latencyProbeService,
     );
+  }
+
+  /// Dispose long-lived resources created by AppDependencies.
+  ///
+  /// Tests should call this in `tearDownAll` to ensure subscriptions and
+  /// DB connections are closed cleanly to avoid teardown races.
+  Future<void> dispose() async {
+    try {
+      _logger.info('[AppDependencies] disposing chatMessageQueryService');
+      await _chatMessageQueryService?.dispose();
+      _logger.info('[AppDependencies] disposed chatMessageQueryService');
+    } catch (e) {
+      _logger.error(
+        '[AppDependencies] error disposing chatMessageQueryService: $e',
+        e,
+      );
+    }
+    try {
+      _logger.info('[AppDependencies] closing database');
+      await _database?.close();
+      _logger.info('[AppDependencies] database closed');
+    } catch (e) {
+      _logger.error('[AppDependencies] error closing database: $e', e);
+    }
   }
 
   Future<void> updatePeerDisplayName(String displayName) async {
@@ -150,7 +213,14 @@ class AppDependencies {
         ? _peerIdentityService.defaultDisplayName(_peerIdentity.id)
         : trimmed;
     await _peerIdentityService.setDisplayName(effectiveName);
-    _peerIdentity = _peerIdentity.copyWith(displayName: effectiveName);
+
+    // Reload full identity from service so any other profile fields (name,
+    // group, role, profileImage) written to SharedPreferences are reflected
+    // immediately in AppDependencies.
+    _peerIdentity = await _peerIdentityService.getIdentity();
+
+    // Ensure our known peers cache and latency probe reflect the updated
+    // identity object.
     _knownPeers[_peerIdentity.id] = _peerIdentity;
     _latencyProbeService.updateIdentity(_peerIdentity);
   }
@@ -158,5 +228,24 @@ class AppDependencies {
   Future<void> rememberPeer(PeerIdentity identity) async {
     await _peerIdentityService.rememberPeer(identity);
     _knownPeers[identity.id] = identity;
+  }
+}
+
+// Test helper: a fake ChatMessageQueryService that avoids creating DB
+// subscriptions and simply exposes an empty broadcast stream per conversation.
+class _FakeChatMessageQueryService extends ChatMessageQueryService {
+  _FakeChatMessageQueryService(super.db);
+
+  @override
+  Stream<List<ChatMessageModel>> watch(String conversationId) {
+    return Stream<List<ChatMessageModel>>.value(
+      const <ChatMessageModel>[],
+    ).asBroadcastStream();
+  }
+
+  @override
+  Future<void> dispose() async {
+    // No-op for fake
+    return;
   }
 }
