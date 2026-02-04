@@ -5,6 +5,8 @@ class ChatAttachment {
     required this.mimeType,
     required this.sizeBytes,
     required this.uri,
+    this.senderHostIp,
+    this.senderPort,
   });
 
   final String id;
@@ -12,6 +14,12 @@ class ChatAttachment {
   final String mimeType;
   final int sizeBytes;
   final String uri;
+  
+  /// IP address of sender for P2P file download (optional)
+  final String? senderHostIp;
+  
+  /// Port of sender for P2P file download (optional)
+  final int? senderPort;
 
   ChatAttachment copyWith({
     String? id,
@@ -19,6 +27,8 @@ class ChatAttachment {
     String? mimeType,
     int? sizeBytes,
     String? uri,
+    String? senderHostIp,
+    int? senderPort,
   }) {
     return ChatAttachment(
       id: id ?? this.id,
@@ -26,6 +36,8 @@ class ChatAttachment {
       mimeType: mimeType ?? this.mimeType,
       sizeBytes: sizeBytes ?? this.sizeBytes,
       uri: uri ?? this.uri,
+      senderHostIp: senderHostIp ?? this.senderHostIp,
+      senderPort: senderPort ?? this.senderPort,
     );
   }
 
@@ -35,6 +47,8 @@ class ChatAttachment {
     'mimeType': mimeType,
     'sizeBytes': sizeBytes,
     'uri': uri,
+    if (senderHostIp != null) 'senderHostIp': senderHostIp,
+    if (senderPort != null) 'senderPort': senderPort,
   };
 
   factory ChatAttachment.fromJson(Map<String, dynamic> json) {
@@ -43,7 +57,9 @@ class ChatAttachment {
       filename: json['filename'] as String,
       mimeType: json['mimeType'] as String,
       sizeBytes: (json['sizeBytes'] as num).toInt(),
-      uri: json['uri'] as String,
+      uri: json['uri'] as String? ?? '',
+      senderHostIp: json['senderHostIp'] as String?,
+      senderPort: json['senderPort'] as int?,
     );
   }
 }

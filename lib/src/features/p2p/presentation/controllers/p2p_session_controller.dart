@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:usaapp/src/app/di/app_dependencies.dart';
+import 'package:usaapp/src/core/models/room_summary.dart';
+import 'package:usaapp/src/core/services/notification_service.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart' as p2p_pkg;
 
 import 'package:flutter/foundation.dart';
@@ -22,13 +24,29 @@ class P2pSessionController extends ChangeNotifier {
     required P2pService p2pService,
     DriftConversationDataSource? conversationStore,
     LatencyProbeService? latencyProbeService,
+    NotificationService? notificationService,
+    bool Function()? backgroundScanningEnabled,
+    int Function()? scanCadenceSeconds,
   }) : _p2pService = p2pService,
        _conversationStore = conversationStore,
-       _latencyProbeService = latencyProbeService;
+       _latencyProbeService = latencyProbeService,
+       _notificationService = notificationService ??
+           AppDependencies.instance.notificationService,
+       _backgroundScanningEnabled = backgroundScanningEnabled ??
+           (() => AppDependencies.instance.backgroundScanningEnabled),
+       _scanCadenceSeconds = scanCadenceSeconds ??
+           (() => AppDependencies.instance.scanCadenceSeconds);
 
   final P2pService _p2pService;
   final DriftConversationDataSource? _conversationStore;
   final LatencyProbeService? _latencyProbeService;
+  final NotificationService _notificationService;
+  final bool Function() _backgroundScanningEnabled;
+  final int Function() _scanCadenceSeconds;
+
+  Timer? _roomsNotificationTimer;
+  final List<RoomSummary> _pendingRoomSummaries = <RoomSummary>[];
+  final Set<String> _pendingRoomKeys = <String>{};
 
   P2pSessionRole? _role;
   bool _isBusy = false;
@@ -172,6 +190,7 @@ class P2pSessionController extends ChangeNotifier {
             _discoveredDevices
               ..clear()
               ..addAll(devices);
+            _enqueueRoomsForNotification(devices);
             notifyListeners();
           },
           onDone: () {
@@ -209,6 +228,8 @@ class P2pSessionController extends ChangeNotifier {
         _scanSubscription = null;
         _isScanning = false;
         notifyListeners();
+        unawaited(_flushRoomNotifications());
+        _cancelNotificationTimer();
       },
     );
   }
@@ -250,6 +271,18 @@ class P2pSessionController extends ChangeNotifier {
       _statusMessage =
           'Connected to ${device.deviceName.isNotEmpty ? device.deviceName : device.deviceAddress}.';
       _errorMessage = null;
+      final resolvedRoomTitle = device.deviceName.isNotEmpty
+          ? device.deviceName
+          : 'Nearby host';
+      final resolvedHostName = device.deviceAddress.isNotEmpty
+          ? device.deviceAddress
+          : 'Unidentified host';
+      unawaited(
+        _notificationService.notifyConnected(
+          resolvedRoomTitle,
+          resolvedHostName,
+        ),
+      );
       unawaited(client.broadcastText(_conversationRequestMessage));
     });
   }
@@ -263,6 +296,7 @@ class P2pSessionController extends ChangeNotifier {
       final client = await _p2pService.ensureClientInitialized();
       await client.disconnect();
       _statusMessage = 'Disconnected from host.';
+      unawaited(_notificationService.notifyDisconnected());
     });
   }
 
@@ -321,6 +355,9 @@ class P2pSessionController extends ChangeNotifier {
       unawaited(_p2pService.disposeRole(activeRole));
     }
 
+    _cancelNotificationTimer();
+    unawaited(_flushRoomNotifications());
+
     super.dispose();
   }
 
@@ -373,6 +410,78 @@ class P2pSessionController extends ChangeNotifier {
         await onFinally();
       }
     }
+  }
+
+  void _enqueueRoomsForNotification(List<BleDiscoveredDevice> devices) {
+    if (!_backgroundScanningEnabled()) {
+      return;
+    }
+
+    var added = false;
+    for (final device in devices) {
+      final key = '${device.deviceName}|${device.deviceAddress}';
+      if (_pendingRoomKeys.add(key)) {
+        _pendingRoomSummaries.add(
+          RoomSummary(
+            roomTitle: device.deviceName.isNotEmpty
+                ? device.deviceName
+                : 'Nearby room',
+            hostName: device.deviceAddress.isNotEmpty
+                ? device.deviceAddress
+                : 'Unknown host',
+          ),
+        );
+        added = true;
+      }
+    }
+
+    if (added) {
+      _ensureNotificationTimerRunning();
+    }
+  }
+
+  void _ensureNotificationTimerRunning() {
+    if (_roomsNotificationTimer != null || !_backgroundScanningEnabled()) {
+      return;
+    }
+
+    _roomsNotificationTimer = Timer.periodic(
+      _notificationInterval(),
+      (_) => unawaited(_flushRoomNotifications()),
+    );
+  }
+
+  Duration _notificationInterval() {
+    final seconds = _scanCadenceSeconds();
+    return Duration(seconds: seconds > 0 ? seconds : 5);
+  }
+
+  Future<void> _flushRoomNotifications() async {
+    if (!_backgroundScanningEnabled()) {
+      _pendingRoomSummaries.clear();
+      _pendingRoomKeys.clear();
+      _cancelNotificationTimer();
+      return;
+    }
+
+    if (_pendingRoomSummaries.isEmpty) {
+      return;
+    }
+
+    final batch = List<RoomSummary>.from(_pendingRoomSummaries);
+    _pendingRoomSummaries.clear();
+    _pendingRoomKeys.clear();
+
+    try {
+      await _notificationService.notifyRoomsFound(batch);
+    } catch (e) {
+      debugPrint('Room notification failed: $e');
+    }
+  }
+
+  void _cancelNotificationTimer() {
+    _roomsNotificationTimer?.cancel();
+    _roomsNotificationTimer = null;
   }
 
   void _listenToHost(FlutterP2pHost host) {
@@ -536,17 +645,40 @@ class P2pSessionController extends ChangeNotifier {
         final host = await _p2pService.ensureHostInitialized();
         final info = await host.broadcastFile(file);
         if (info != null) {
+          final fileName = file.uri.pathSegments.isNotEmpty
+              ? file.uri.pathSegments.last
+              : file.path;
+          final lower = fileName.toLowerCase();
+          String mimeType = 'application/octet-stream';
+          if (lower.endsWith('.png')) {
+            mimeType = 'image/png';
+          } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+            mimeType = 'image/jpeg';
+          } else if (lower.endsWith('.gif')) {
+            mimeType = 'image/gif';
+          }
+
+          // Build a ChatAttachment-shaped map so recipients can parse attachments
+          // and also include transport fields needed for direct download.
+          final fileMap = <String, dynamic>{
+            'id': info.id,
+            'filename': info.name,
+            'mimeType': mimeType,
+            'sizeBytes': info.size,
+            'uri': '', // will be populated by downloader on recipient
+            'senderHostIp': info.senderHostIp,
+            'senderPort': info.senderPort,
+          };
+
           final payload = ChatMessagePayload(
             id: DateTime.now().microsecondsSinceEpoch.toString(),
             conversationId: _activeConversationId ?? 'default',
             conversationTitle: _activeConversationTitle ?? 'Conversation',
             senderId: AppDependencies.instance.peerIdentity.id,
             senderName: AppDependencies.instance.peerIdentity.displayName,
-            content: file.uri.pathSegments.isNotEmpty
-                ? file.uri.pathSegments.last
-                : file.path,
+            content: fileName,
             sentAt: DateTime.now().toUtc(),
-            files: [info.toJson()],
+            files: [fileMap],
           );
           await sendChatMessage(payload);
         }
@@ -555,17 +687,38 @@ class P2pSessionController extends ChangeNotifier {
         final client = await _p2pService.ensureClientInitialized();
         final info = await client.broadcastFile(file);
         if (info != null) {
+          final fileName = file.uri.pathSegments.isNotEmpty
+              ? file.uri.pathSegments.last
+              : file.path;
+          final lower = fileName.toLowerCase();
+          String mimeType = 'application/octet-stream';
+          if (lower.endsWith('.png')) {
+            mimeType = 'image/png';
+          } else if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) {
+            mimeType = 'image/jpeg';
+          } else if (lower.endsWith('.gif')) {
+            mimeType = 'image/gif';
+          }
+
+          final fileMap = <String, dynamic>{
+            'id': info.id,
+            'filename': info.name,
+            'mimeType': mimeType,
+            'sizeBytes': info.size,
+            'uri': '',
+            'senderHostIp': info.senderHostIp,
+            'senderPort': info.senderPort,
+          };
+
           final payload = ChatMessagePayload(
             id: DateTime.now().microsecondsSinceEpoch.toString(),
             conversationId: _activeConversationId ?? 'default',
             conversationTitle: _activeConversationTitle ?? 'Conversation',
             senderId: AppDependencies.instance.peerIdentity.id,
             senderName: AppDependencies.instance.peerIdentity.displayName,
-            content: file.uri.pathSegments.isNotEmpty
-                ? file.uri.pathSegments.last
-                : file.path,
+            content: fileName,
             sentAt: DateTime.now().toUtc(),
-            files: [info.toJson()],
+            files: [fileMap],
           );
           await sendChatMessage(payload);
         }

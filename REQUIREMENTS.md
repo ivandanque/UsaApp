@@ -13,8 +13,14 @@
         that the host has set
 
 ## Notifications
-- When a chat room is found, a notification fires that a notification is found
+- App should be able to run in background when trying to search for rooms to join
+- If room is found, a notification will trigger in Android notification bar.
 - When a user has joined the chat, a notification (either in notif bar or in the chat page) will also fire.
+- When a user or host leaves the chat, a notification should trigger
 
 ## Logging
 - Latency logging can export to an actual CSV file
+
+## Chat UX
+- Feature where if a user sees a message, a small icon shows, indicating that a user has seen the messsage
+- Similar to Messenger (not sure if it's possible)

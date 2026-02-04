@@ -20,6 +20,8 @@ class SettingsController extends ChangeNotifier {
   bool _isSavingDisplayName = false;
   String _displayName = '';
   String _deviceCode = '';
+  bool _backgroundScanningEnabled = false;
+  int _scanCadenceSeconds = 5;
 
   bool get isCheckingPermissions => _isCheckingPermissions;
   bool get isCheckingServices => _isCheckingServices;
@@ -29,6 +31,8 @@ class SettingsController extends ChangeNotifier {
   bool get isSavingDisplayName => _isSavingDisplayName;
   String get displayName => _displayName;
   String get deviceCode => _deviceCode;
+  bool get backgroundScanningEnabled => _backgroundScanningEnabled;
+  int get scanCadenceSeconds => _scanCadenceSeconds;
 
   /// Check and request all necessary permissions.
   Future<void> setupPermissions() async {
@@ -73,12 +77,36 @@ class SettingsController extends ChangeNotifier {
         requestIfMissing: false,
       );
       _allServicesEnabled = await _p2pService.areAllServicesEnabled();
+      // Load persisted scanning preferences
+      _backgroundScanningEnabled = AppDependencies.instance.backgroundScanningEnabled;
+      _scanCadenceSeconds = AppDependencies.instance.scanCadenceSeconds;
       final identity = AppDependencies.instance.peerIdentity;
       _displayName = identity.displayName;
       _deviceCode = identity.id;
       notifyListeners();
     } catch (e) {
       _logger.error('Error refreshing status: $e');
+    }
+  }
+
+  Future<void> setBackgroundScanningEnabled(bool enabled) async {
+    try {
+      await AppDependencies.instance.setBackgroundScanningEnabled(enabled);
+      _backgroundScanningEnabled = enabled;
+      notifyListeners();
+    } catch (e) {
+      _logger.error('Error setting background scanning: $e');
+    }
+  }
+
+  Future<void> setScanCadenceSeconds(int seconds) async {
+    final effective = seconds > 0 ? seconds : 1;
+    try {
+      await AppDependencies.instance.setScanCadenceSeconds(effective);
+      _scanCadenceSeconds = effective;
+      notifyListeners();
+    } catch (e) {
+      _logger.error('Error setting scan cadence: $e');
     }
   }
 

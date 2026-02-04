@@ -141,8 +141,54 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          // Background scanning preferences
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              return Column(
+                children: [
+                  Card(
+                    child: SwitchListTile(
+                      title: const Text('Background scanning'),
+                      subtitle: const Text(
+                        'Allow the app to scan and notify about nearby rooms when backgrounded',
+                      ),
+                      value: _controller.backgroundScanningEnabled,
+                      onChanged: (bool v) => _controller.setBackgroundScanningEnabled(v),
+                    ),
+                  ),
+                  if (_controller.backgroundScanningEnabled)
+                    Card(
+                      child: ListTile(
+                        title: const Text('Scan cadence (seconds)'),
+                        subtitle: Text('Every ${_controller.scanCadenceSeconds} second(s)'),
+                        trailing: SizedBox(
+                          width: 120,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.remove),
+                                onPressed: () => _controller.setScanCadenceSeconds(_controller.scanCadenceSeconds - 1),
+                              ),
+                              Text('${_controller.scanCadenceSeconds}'),
+                              IconButton(
+                                icon: const Icon(Icons.add),
+                                onPressed: () => _controller.setScanCadenceSeconds(_controller.scanCadenceSeconds + 1),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
         ],
       ),
     );
   }
 }
+

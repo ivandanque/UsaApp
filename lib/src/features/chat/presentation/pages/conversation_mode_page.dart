@@ -9,12 +9,13 @@ import '../../../p2p/presentation/controllers/p2p_session_controller.dart';
 import '../../data/datasources/drift_conversation_data_source.dart';
 import '../../domain/entities/conversation.dart';
 import 'chat_page.dart';
+import '../../../../app/routes/app_route_names.dart';
 
 class ConversationModePage extends StatefulWidget {
   const ConversationModePage({super.key, P2pSessionController? controller})
     : _controller = controller;
 
-  static const routeName = '/chat';
+  static const routeName = AppRouteNames.conversationMode;
 
   final P2pSessionController? _controller;
 

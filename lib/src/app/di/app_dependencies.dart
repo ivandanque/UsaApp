@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/database/app_database.dart';
@@ -17,6 +18,7 @@ import '../../features/chat/domain/repositories/chat_repository.dart';
 import '../../features/chat/domain/usecases/send_message.dart';
 import '../../features/chat/domain/usecases/watch_messages.dart';
 import '../../features/chat/presentation/controllers/chat_controller.dart';
+import '../../core/services/notification_service.dart';
 import '../../features/p2p/data/services/latency_probe_service.dart';
 import '../../features/p2p/data/services/p2p_service.dart';
 import '../../features/p2p/presentation/controllers/p2p_session_controller.dart';
@@ -25,6 +27,11 @@ class AppDependencies {
   AppDependencies._();
 
   static final AppDependencies instance = AppDependencies._();
+
+  static const String _prefBackgroundScanningEnabled =
+      'pref_background_scanning_enabled';
+  static const String _prefScanCadenceSeconds = 'pref_scan_cadence_seconds';
+  static const int _defaultScanCadenceSeconds = 5;
 
   final Logger _logger = const Logger('AppDependencies');
 
@@ -47,6 +54,8 @@ class AppDependencies {
   late PeerIdentity _peerIdentity;
   late final LatencyProbeService _latencyProbeService;
   Map<String, PeerIdentity> _knownPeers = <String, PeerIdentity>{};
+  late final SharedPreferences _sharedPreferences;
+  late final NotificationService _notificationService;
 
   /// Initialize dependencies.
   ///
@@ -55,7 +64,8 @@ class AppDependencies {
   Future<void> init({QueryExecutor? executor}) async {
     _logger.info('Initializing dependencies');
 
-    final sharedPreferences = await SharedPreferences.getInstance();
+      final sharedPreferences = await SharedPreferences.getInstance();
+      _sharedPreferences = sharedPreferences;
 
     // Initialize database (use provided executor for tests, or default)
     if (executor != null) {
@@ -102,6 +112,10 @@ class AppDependencies {
     // Conversations are stored in SQLite via Drift; no SharedPreferences store.
 
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
+      _notificationService = NotificationService(
+        plugin: FlutterLocalNotificationsPlugin(),
+      );
+      await _notificationService.initialize();
   }
 
   /// Initialize a minimal set of dependencies for fast, deterministic tests.
@@ -124,6 +138,10 @@ class AppDependencies {
     // Minimal services that do not start platform plugins eagerly
     _p2pService = P2pService();
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
+      _sharedPreferences = await SharedPreferences.getInstance();
+      _notificationService = NotificationService(
+        plugin: FlutterLocalNotificationsPlugin(),
+      );
 
     // Optionally create a lightweight in-memory DB + conversation store for
     // tests that need basic persistence without initializing message
@@ -157,7 +175,12 @@ class AppDependencies {
 
   P2pService get p2pService => _p2pService;
   PeerIdentityService get peerIdentityService => _peerIdentityService;
-  LatencyProbeService get latencyProbeService => _latencyProbeService;
+    LatencyProbeService get latencyProbeService => _latencyProbeService;
+    NotificationService get notificationService => _notificationService;
+    bool get backgroundScanningEnabled =>
+      _sharedPreferences.getBool(_prefBackgroundScanningEnabled) ?? false;
+    int get scanCadenceSeconds =>
+      _sharedPreferences.getInt(_prefScanCadenceSeconds) ?? _defaultScanCadenceSeconds;
 
   // Database and drift data sources
   AppDatabase? get database => _database;
@@ -228,6 +251,20 @@ class AppDependencies {
   Future<void> rememberPeer(PeerIdentity identity) async {
     await _peerIdentityService.rememberPeer(identity);
     _knownPeers[identity.id] = identity;
+  }
+
+  Future<void> setBackgroundScanningEnabled(bool enabled) async {
+    await _sharedPreferences.setBool(
+      _prefBackgroundScanningEnabled,
+      enabled,
+    );
+  }
+
+  Future<void> setScanCadenceSeconds(int seconds) async {
+    await _sharedPreferences.setInt(
+      _prefScanCadenceSeconds,
+      seconds,
+    );
   }
 }
 

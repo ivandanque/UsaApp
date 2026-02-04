@@ -324,14 +324,10 @@ class _ChatPageState extends State<ChatPage> {
                                               icon: const Icon(Icons.refresh),
                                               tooltip: 'Retry download',
                                               onPressed: () async {
-                                                final payloadFile = {
-                                                  'id': a.id,
-                                                  'name': a.filename,
-                                                };
                                                 await _controller
                                                     .requestAttachmentDownload(
                                                       message.id,
-                                                      payloadFile,
+                                                      a,
                                                     );
                                               },
                                             ),
@@ -356,14 +352,10 @@ class _ChatPageState extends State<ChatPage> {
                                           icon: const Icon(Icons.refresh),
                                           tooltip: 'Retry download',
                                           onPressed: () async {
-                                            final payloadFile = {
-                                              'id': a.id,
-                                              'name': a.filename,
-                                            };
                                             await _controller
                                                 .requestAttachmentDownload(
                                                   message.id,
-                                                  payloadFile,
+                                                  a,
                                                 );
                                           },
                                         ),

@@ -251,16 +251,15 @@ class ChatController extends ChangeNotifier {
     final chatMsg = payload.toChatMessage();
     await receiveMessage(chatMsg);
 
-    // If payload contains files served via the transport, attempt automatic download
-    final files = payload.files;
-    if (files != null && files.isNotEmpty) {
-      for (final Map<String, dynamic> f in files) {
-        final hostIp = f['senderHostIp'] as String?;
-        final port = f['senderPort'] as int?;
-        final fileId = f['id'] as String?;
-        if (hostIp != null && port != null && fileId != null) {
-          _pendingFileInfos[fileId] = Map<String, dynamic>.from(f);
-          unawaited(_attemptDownloadForMessage(chatMsg.id, f));
+    // If message contains attachments with transport info, attempt automatic download
+    if (chatMsg.attachments.isNotEmpty) {
+      for (final attachment in chatMsg.attachments) {
+        if (attachment.senderHostIp != null && 
+            attachment.senderPort != null && 
+            attachment.uri.isEmpty) {
+          // Store attachment object for retry attempts
+          _pendingFileInfos[attachment.id] = attachment.toJson();
+          unawaited(_attemptDownloadForAttachment(chatMsg.id, attachment));
         }
       }
     }
@@ -272,28 +271,37 @@ class ChatController extends ChangeNotifier {
   /// Public request to (re)attempt downloading an attachment for a message.
   Future<void> requestAttachmentDownload(
     String messageId,
-    Map<String, dynamic>? fileInfo,
+    ChatAttachment attachment,
   ) async {
-    Map<String, dynamic>? info = fileInfo;
-    if (info == null || info['senderHostIp'] == null) {
-      final id = info == null ? null : info['id'] as String?;
-      if (id != null) {
-        info = _pendingFileInfos[id];
+    if (attachment.senderHostIp == null || attachment.senderPort == null) {
+      // Try to retrieve transport info from pending map
+      final pendingInfo = _pendingFileInfos[attachment.id];
+      if (pendingInfo != null) {
+        final hostIp = pendingInfo['senderHostIp'] as String?;
+        final port = pendingInfo['senderPort'] as int?;
+        if (hostIp != null && port != null) {
+          final enriched = attachment.copyWith(
+            senderHostIp: hostIp,
+            senderPort: port,
+          );
+          await _attemptDownloadForAttachment(messageId, enriched);
+          return;
+        }
       }
+      return;
     }
-    if (info == null) return;
-    await _attemptDownloadForMessage(messageId, info);
+    await _attemptDownloadForAttachment(messageId, attachment);
   }
 
-  Future<void> _attemptDownloadForMessage(
+  Future<void> _attemptDownloadForAttachment(
     String messageId,
-    Map<String, dynamic> fileInfo,
+    ChatAttachment attachment,
   ) async {
-    final fileId = fileInfo['id'] as String?;
-    final hostIp = fileInfo['senderHostIp'] as String?;
-    final port = fileInfo['senderPort'] as int?;
-    final name = fileInfo['name'] as String? ?? 'file';
-    if (fileId == null || hostIp == null || port == null) return;
+    final fileId = attachment.id;
+    final hostIp = attachment.senderHostIp;
+    final port = attachment.senderPort;
+    final name = attachment.filename;
+    if (hostIp == null || port == null) return;
 
     final uri = Uri.parse(
       'http://$hostIp:$port/file?id=${Uri.encodeComponent(fileId)}',
@@ -320,23 +328,21 @@ class ChatController extends ChangeNotifier {
 
           // Find message view model and update attachments list locally
           final idx = _messages.indexWhere((m) => m.id == messageId);
-          if (idx != -1) {
-            final vm = _messages[idx];
-            for (var i = 0; i < vm.attachments.length; i++) {
-              if (vm.attachments[i].id == fileId) {
-                vm.attachments[i] = vm.attachments[i].copyWith(uri: localPath);
-              }
-            }
-            notifyListeners();
-          }
-
-          // Persist updated attachment URI to DB by updating the message record
-          // Build updated attachments from current view model or payload
           List<ChatAttachment>? updatedAttachments;
           if (idx != -1) {
-            updatedAttachments = _messages[idx].attachments;
-          }
-          if (updatedAttachments != null) {
+            final vm = _messages[idx];
+            updatedAttachments = vm.attachments.map((a) {
+              if (a.id == fileId) {
+                return a.copyWith(uri: localPath);
+              }
+              return a;
+            }).toList();
+            // Update in-memory view model (note: this mutates the list)
+            vm.attachments.clear();
+            vm.attachments.addAll(updatedAttachments);
+            notifyListeners();
+            
+            // Persist updated attachment URI to DB
             await _sendMessage(
               SendMessageParams(
                 id: messageId,

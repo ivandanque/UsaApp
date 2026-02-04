@@ -5,6 +5,8 @@ import 'package:usaapp/src/features/chat/domain/entities/chat_message_payload.da
 import 'package:usaapp/src/features/chat/domain/entities/conversation.dart';
 import 'package:usaapp/src/features/p2p/data/services/p2p_service.dart';
 import 'package:usaapp/src/features/p2p/presentation/controllers/p2p_session_controller.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:usaapp/src/core/services/notification_service.dart';
 
 /// Lightweight fake P2P controller used by widget tests to avoid invoking
 /// platform plugins or starting real services.
@@ -17,6 +19,11 @@ class FakeP2pSessionController extends P2pSessionController {
         p2pService: P2pService(),
         conversationStore: null,
         latencyProbeService: null,
+        notificationService: NotificationService(
+          plugin: FlutterLocalNotificationsPlugin(),
+        ),
+        backgroundScanningEnabled: () => false,
+        scanCadenceSeconds: () => 5,
       );
 
   @override
