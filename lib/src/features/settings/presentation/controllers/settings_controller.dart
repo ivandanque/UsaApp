@@ -6,9 +6,9 @@ import '../../../p2p/data/services/p2p_service.dart';
 
 /// Controller for managing P2P settings and setup.
 class SettingsController extends ChangeNotifier {
-  SettingsController()
-    : _logger = const Logger('SettingsController'),
-      _p2pService = AppDependencies.instance.p2pService;
+  SettingsController({P2pService? p2pService})
+      : _logger = const Logger('SettingsController'),
+        _p2pService = p2pService ?? AppDependencies.instance.p2pService;
 
   final Logger _logger;
   final P2pService _p2pService;

@@ -7,6 +7,7 @@ import 'src/core/services/onboarding_service.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppDependencies.instance.init();
+  await AppDependencies.instance.initializeNotificationService();
   final initialRoute = await OnboardingService().getInitialRoute();
 
   runApp(UsaApp(initialRoute: initialRoute));

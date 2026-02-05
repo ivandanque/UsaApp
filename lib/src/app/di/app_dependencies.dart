@@ -1,4 +1,5 @@
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -55,7 +56,7 @@ class AppDependencies {
   late final LatencyProbeService _latencyProbeService;
   Map<String, PeerIdentity> _knownPeers = <String, PeerIdentity>{};
   late final SharedPreferences _sharedPreferences;
-  late final NotificationService _notificationService;
+  NotificationService? _notificationService;
 
   /// Initialize dependencies.
   ///
@@ -112,10 +113,6 @@ class AppDependencies {
     // Conversations are stored in SQLite via Drift; no SharedPreferences store.
 
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
-      _notificationService = NotificationService(
-        plugin: FlutterLocalNotificationsPlugin(),
-      );
-      await _notificationService.initialize();
   }
 
   /// Initialize a minimal set of dependencies for fast, deterministic tests.
@@ -138,10 +135,7 @@ class AppDependencies {
     // Minimal services that do not start platform plugins eagerly
     _p2pService = P2pService();
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
-      _sharedPreferences = await SharedPreferences.getInstance();
-      _notificationService = NotificationService(
-        plugin: FlutterLocalNotificationsPlugin(),
-      );
+    _sharedPreferences = await SharedPreferences.getInstance();
 
     // Optionally create a lightweight in-memory DB + conversation store for
     // tests that need basic persistence without initializing message
@@ -176,7 +170,12 @@ class AppDependencies {
   P2pService get p2pService => _p2pService;
   PeerIdentityService get peerIdentityService => _peerIdentityService;
     LatencyProbeService get latencyProbeService => _latencyProbeService;
-    NotificationService get notificationService => _notificationService;
+    NotificationService get notificationService {
+      _notificationService ??= NotificationService(
+        plugin: FlutterLocalNotificationsPlugin(),
+      );
+      return _notificationService!;
+    }
     bool get backgroundScanningEnabled =>
       _sharedPreferences.getBool(_prefBackgroundScanningEnabled) ?? false;
     int get scanCadenceSeconds =>
@@ -265,6 +264,19 @@ class AppDependencies {
       _prefScanCadenceSeconds,
       seconds,
     );
+  }
+
+  /// Initialize the platform-specific parts of `NotificationService`.
+  ///
+  /// Call this during app runtime startup. Tests should avoid calling
+  /// this so that platform channels are not invoked in unit tests.
+  Future<void> initializeNotificationService() async {
+    _notificationService ??= NotificationService(
+      plugin: FlutterLocalNotificationsPlugin(),
+    );
+    if (!kIsWeb) {
+      await _notificationService!.initialize();
+    }
   }
 }
 

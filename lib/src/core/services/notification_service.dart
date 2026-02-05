@@ -4,8 +4,47 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/room_summary.dart';
 import '../../app/routes/app_route_names.dart';
 
+/// Adapter interface so tests can provide a lightweight fake implementation
+/// without depending on the real plugin implementation.
+abstract class NotificationPlugin {
+  Future<void> show({
+    required int id,
+    String? title,
+    String? body,
+    NotificationDetails? notificationDetails,
+    String? payload,
+  });
+}
+
+class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
+  _FlutterLocalNotificationsAdapter(this._impl);
+
+  final FlutterLocalNotificationsPlugin _impl;
+
+  @override
+  Future<void> show({
+    required int id,
+    String? title,
+    String? body,
+    NotificationDetails? notificationDetails,
+    String? payload,
+  }) {
+    return _impl.show(
+      id: id,
+      title: title,
+      body: body,
+      notificationDetails: notificationDetails,
+      payload: payload,
+    );
+  }
+}
+
 class NotificationService {
   NotificationService({required FlutterLocalNotificationsPlugin plugin})
+      : _plugin = _FlutterLocalNotificationsAdapter(plugin);
+
+  /// Constructor used by tests to inject a fake `NotificationPlugin`.
+  NotificationService.withPlugin({required NotificationPlugin plugin})
       : _plugin = plugin;
 
   static const String _roomsChannelId = 'usaapp_p2p_rooms';
@@ -17,7 +56,7 @@ class NotificationService {
   static const int _connectionNotificationId = 9002;
   static const int _disconnectionNotificationId = 9003;
 
-  final FlutterLocalNotificationsPlugin _plugin;
+  final NotificationPlugin _plugin;
   GlobalKey<NavigatorState>? _navigatorKey;
   bool _initialized = false;
 
