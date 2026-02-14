@@ -278,15 +278,21 @@ class ChatController extends ChangeNotifier {
     final senderName = message.sender.trim();
     if (senderName.isNotEmpty) {
       final existingIdentity = _knownPeers[message.senderId];
-      if (existingIdentity == null ||
-          existingIdentity.displayName != senderName) {
+      if (existingIdentity == null) {
+        // First time seeing this peer — create a minimal identity.
         final newIdentity = PeerIdentity(
           id: message.senderId,
           displayName: senderName,
         );
         _knownPeers[message.senderId] = newIdentity;
         unawaited(_rememberPeer(newIdentity));
+      } else if (existingIdentity.displayName != senderName) {
+        // Display name changed — update it but keep the rest of the identity.
+        final updated = existingIdentity.copyWith(displayName: senderName);
+        _knownPeers[message.senderId] = updated;
+        unawaited(_rememberPeer(updated));
       }
+      // Otherwise the identity we already have is richer — keep it.
     }
 
     // Save attachments with empty URI so the DB has attachment metadata
@@ -328,14 +334,38 @@ class ChatController extends ChangeNotifier {
         );
     conversation = conversationRecord;
 
-    // Extract and remember sender identity
+    // Extract and remember sender identity, merging defensively so that
+    // incomplete payloads (e.g. history sync) don't erase richer data we
+    // already have.
     final senderIdentity = payload.getSenderIdentity();
     final existingIdentity = _knownPeers[senderIdentity.id];
-    if (existingIdentity == null ||
-        existingIdentity.displayName != senderIdentity.displayName ||
-        existingIdentity.profileImage != senderIdentity.profileImage) {
+    if (existingIdentity == null) {
       _knownPeers[senderIdentity.id] = senderIdentity;
       unawaited(_rememberPeer(senderIdentity));
+    } else {
+      // Merge: prefer incoming non-null values, but keep existing non-null
+      // values when the incoming payload omits them.
+      final merged = PeerIdentity(
+        id: senderIdentity.id,
+        displayName: senderIdentity.displayName.isNotEmpty
+            ? senderIdentity.displayName
+            : existingIdentity.displayName,
+        name: senderIdentity.name ?? existingIdentity.name,
+        role: senderIdentity.role != UserRole.other
+            ? senderIdentity.role
+            : existingIdentity.role,
+        groupName: senderIdentity.groupName ?? existingIdentity.groupName,
+        profileImage:
+            senderIdentity.profileImage ?? existingIdentity.profileImage,
+      );
+      if (merged.displayName != existingIdentity.displayName ||
+          merged.name != existingIdentity.name ||
+          merged.role != existingIdentity.role ||
+          merged.groupName != existingIdentity.groupName ||
+          merged.profileImage != existingIdentity.profileImage) {
+        _knownPeers[senderIdentity.id] = merged;
+        unawaited(_rememberPeer(merged));
+      }
     }
 
     final chatMsg = payload.toChatMessage();

@@ -760,12 +760,17 @@ class P2pSessionController extends ChangeNotifier {
             'senderPort': info.senderPort,
           };
 
+          final localIdentity = AppDependencies.instance.peerIdentity;
           final payload = ChatMessagePayload(
             id: DateTime.now().microsecondsSinceEpoch.toString(),
             conversationId: _activeConversationId ?? 'default',
             conversationTitle: _activeConversationTitle ?? 'Conversation',
-            senderId: AppDependencies.instance.peerIdentity.id,
-            senderName: AppDependencies.instance.peerIdentity.displayName,
+            senderId: localIdentity.id,
+            senderName: localIdentity.displayName,
+            senderFullName: localIdentity.name,
+            senderRole: localIdentity.role.name,
+            senderGroupName: localIdentity.groupName,
+            senderProfileImageBase64: localIdentity.profileImage,
             content: '',
             sentAt: DateTime.now().toUtc(),
             files: [fileMap],
@@ -800,12 +805,17 @@ class P2pSessionController extends ChangeNotifier {
             'senderPort': info.senderPort,
           };
 
+          final localIdentity = AppDependencies.instance.peerIdentity;
           final payload = ChatMessagePayload(
             id: DateTime.now().microsecondsSinceEpoch.toString(),
             conversationId: _activeConversationId ?? 'default',
             conversationTitle: _activeConversationTitle ?? 'Conversation',
-            senderId: AppDependencies.instance.peerIdentity.id,
-            senderName: AppDependencies.instance.peerIdentity.displayName,
+            senderId: localIdentity.id,
+            senderName: localIdentity.displayName,
+            senderFullName: localIdentity.name,
+            senderRole: localIdentity.role.name,
+            senderGroupName: localIdentity.groupName,
+            senderProfileImageBase64: localIdentity.profileImage,
             content: '',
             sentAt: DateTime.now().toUtc(),
             files: [fileMap],
