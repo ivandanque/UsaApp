@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 
@@ -168,6 +170,8 @@ class _ConversationModePageState extends State<ConversationModePage> {
     await _controller.waitForActiveConversationSync();
 
     Conversation? conversation;
+    bool isPrivate = false;
+    String? passwordHash;
 
     if (preferActiveConversation) {
       final activeId = _controller.activeConversationId;
@@ -183,17 +187,51 @@ class _ConversationModePageState extends State<ConversationModePage> {
       }
     }
 
-    conversation ??= _selectedConversation;
+    if (conversation == null && _selectedConversation != null) {
+      conversation = _selectedConversation;
+    }
 
-    conversation ??= await _showConversationPicker();
     if (conversation == null) {
-      _refreshSelectedConversation();
-      return;
+      final result = await _showConversationPicker();
+      if (result == null) {
+        _refreshSelectedConversation();
+        return;
+      }
+      conversation = result.conversation;
+      isPrivate = result.isPrivate;
+      passwordHash = result.passwordHash;
     }
 
     final conversationToOpen = conversation;
     setState(() => _selectedConversation = conversationToOpen);
-    _controller.setActiveConversation(conversationToOpen);
+    
+    // If joining a private conversation as a client, prompt for password
+    if (isPrivate && _controller.role == P2pSessionRole.client) {
+      final password = await _promptForPassword();
+      if (password == null) {
+        _refreshSelectedConversation();
+        return;
+      }
+      // Verify password
+      final verifiedHash = _hashPassword(password);
+      if (passwordHash != null && verifiedHash != passwordHash) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Incorrect password. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+        _refreshSelectedConversation();
+        return;
+      }
+    }
+    
+    _controller.setActiveConversation(
+      conversationToOpen,
+      isPrivate: isPrivate,
+      passwordHash: passwordHash,
+    );
 
     if (!mounted) {
       return;
@@ -207,6 +245,19 @@ class _ConversationModePageState extends State<ConversationModePage> {
         ),
       ),
     );
+  }
+
+  Future<String?> _promptForPassword() async {
+    return showDialog<String>(
+      context: context,
+      builder: (context) => const _PasswordPromptDialog(),
+    );
+  }
+
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
   }
 
   void _scheduleAutoOpenIfNeeded() {
@@ -268,8 +319,8 @@ class _ConversationModePageState extends State<ConversationModePage> {
     }
   }
 
-  Future<Conversation?> _showConversationPicker() async {
-    return showModalBottomSheet<Conversation>(
+  Future<({Conversation conversation, bool isPrivate, String? passwordHash})?> _showConversationPicker() async {
+    final result = await showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
@@ -278,6 +329,15 @@ class _ConversationModePageState extends State<ConversationModePage> {
         selectedConversationId: _selectedConversation?.id,
       ),
     );
+
+    if (result == null) return null;
+    
+    // Result can be either a Conversation or a record with privacy details
+    if (result is Conversation) {
+      return (conversation: result, isPrivate: false, passwordHash: null);
+    } else {
+      return result as ({Conversation conversation, bool isPrivate, String? passwordHash});
+    }
   }
 }
 
@@ -411,19 +471,27 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
   }
 
   Future<void> _handleCreatePressed() async {
-    final name = await _promptForName();
-    final trimmed = name?.trim() ?? '';
-    if (trimmed.isEmpty) {
-      return;
-    }
+    final details = await _promptForConversationDetails();
+    if (details == null) return;
+    final trimmedName = details.name.trim();
+    if (trimmedName.isEmpty) return;
 
     setState(() => _isCreating = true);
     try {
-      final conversation = await widget.store.createConversation(trimmed);
+      final conversation = await widget.store.createConversation(trimmedName);
+      String? passwordHash;
+      if (details.isPrivate && details.password != null) {
+        passwordHash = _hashPassword(details.password!);
+      }
       if (!mounted) {
         return;
       }
-      Navigator.of(context).pop(conversation);
+      // Return conversation with privacy metadata
+      Navigator.of(context).pop((
+        conversation: conversation,
+        isPrivate: details.isPrivate,
+        passwordHash: passwordHash,
+      ));
     } finally {
       if (mounted) {
         setState(() => _isCreating = false);
@@ -431,10 +499,16 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
     }
   }
 
-  Future<String?> _promptForName() async {
-    return showDialog<String>(
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
+
+  Future<({String name, bool isPrivate, String? password})?> _promptForConversationDetails() async {
+    return showDialog<({String name, bool isPrivate, String? password})>(
       context: context,
-      builder: (context) => const _ConversationNameDialog(
+      builder: (context) => const _ConversationDetailsDialog(
         title: 'Create new chat',
         confirmLabel: 'Create',
       ),
@@ -611,6 +685,136 @@ class _ConversationNameDialogState extends State<_ConversationNameDialog> {
 }
 
 enum _ConversationAction { rename, delete }
+
+class _ConversationDetailsDialog extends StatefulWidget {
+  const _ConversationDetailsDialog({
+    required this.title,
+    required this.confirmLabel,
+  });
+
+  final String title;
+  final String confirmLabel;
+
+  @override
+  State<_ConversationDetailsDialog> createState() =>
+      _ConversationDetailsDialogState();
+}
+
+class _ConversationDetailsDialogState extends State<_ConversationDetailsDialog> {
+  late final TextEditingController _nameController;
+  late final TextEditingController _passwordController;
+  bool _isPrivate = false;
+  String _currentName = '';
+  String _currentPassword = '';
+  bool _obscurePassword = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _nameController = TextEditingController();
+    _passwordController = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final trimmedName = _nameController.text.trim();
+    if (trimmedName.isEmpty) return;
+    if (_isPrivate && _currentPassword.trim().isEmpty) return;
+
+    Navigator.of(context).pop((
+      name: trimmedName,
+      isPrivate: _isPrivate,
+      password: _isPrivate ? _currentPassword : null,
+    ));
+  }
+
+  bool get _canSubmit {
+    if (_currentName.trim().isEmpty) return false;
+    if (_isPrivate && _currentPassword.trim().isEmpty) return false;
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(widget.title),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: _nameController,
+              autofocus: true,
+              decoration: const InputDecoration(labelText: 'Conversation name'),
+              textInputAction: TextInputAction.next,
+              onChanged: (value) => setState(() => _currentName = value),
+              onSubmitted: (_) => _isPrivate ? null : _submit(),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Private chat',
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ),
+                Switch(
+                  value: _isPrivate,
+                  onChanged: (value) => setState(() => _isPrivate = value),
+                ),
+              ],
+            ),
+            if (_isPrivate) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Set a password to protect this conversation. '
+                'Guests will need to enter it to join.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _passwordController,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                    ),
+                    onPressed: () {
+                      setState(() => _obscurePassword = !_obscurePassword);
+                    },
+                  ),
+                ),
+                obscureText: _obscurePassword,
+                textInputAction: TextInputAction.done,
+                onChanged: (value) => setState(() => _currentPassword = value),
+                onSubmitted: (_) => _canSubmit ? _submit() : null,
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _canSubmit ? _submit : null,
+          child: Text(widget.confirmLabel),
+        ),
+      ],
+    );
+  }
+}
 
 class _HostModeSection extends StatelessWidget {
   const _HostModeSection({required this.controller});
@@ -833,6 +1037,83 @@ class _ClientDetails extends StatelessWidget {
         SelectableText(
           'Device IP: ${state.hostIpAddress ?? 'Unknown'}',
           style: theme.textTheme.bodySmall,
+        ),
+      ],
+    );
+  }
+}
+
+class _PasswordPromptDialog extends StatefulWidget {
+  const _PasswordPromptDialog();
+
+  @override
+  State<_PasswordPromptDialog> createState() => _PasswordPromptDialogState();
+}
+
+class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
+  late final TextEditingController _controller;
+  bool _obscurePassword = true;
+  String _currentPassword = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final password = _controller.text.trim();
+    if (password.isEmpty) return;
+    Navigator.of(context).pop(password);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Private Conversation'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'This conversation is password protected. Enter the password to join.',
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _controller,
+            autofocus: true,
+            decoration: InputDecoration(
+              labelText: 'Password',
+              suffixIcon: IconButton(
+                icon: Icon(
+                  _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                ),
+                onPressed: () {
+                  setState(() => _obscurePassword = !_obscurePassword);
+                },
+              ),
+            ),
+            obscureText: _obscurePassword,
+            textInputAction: TextInputAction.done,
+            onChanged: (value) => setState(() => _currentPassword = value),
+            onSubmitted: (_) => _currentPassword.isNotEmpty ? _submit() : null,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _currentPassword.isEmpty ? null : _submit,
+          child: const Text('Join'),
         ),
       ],
     );

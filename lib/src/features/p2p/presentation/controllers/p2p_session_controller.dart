@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:usaapp/src/app/di/app_dependencies.dart';
 import 'package:usaapp/src/core/models/room_summary.dart';
 import 'package:usaapp/src/core/services/notification_service.dart';
@@ -55,6 +56,8 @@ class P2pSessionController extends ChangeNotifier {
 
   String? _activeConversationId;
   String? _activeConversationTitle;
+  bool _activeConversationIsPrivate = false;
+  String? _activeConversationPasswordHash;
 
   HotspotHostState? _hostState;
   HotspotClientState? _clientState;
@@ -97,6 +100,22 @@ class P2pSessionController extends ChangeNotifier {
       _incomingMessagesController.stream;
   String? get activeConversationId => _activeConversationId;
   String? get activeConversationTitle => _activeConversationTitle;
+  bool get activeConversationIsPrivate => _activeConversationIsPrivate;
+
+  /// Verify if a password matches the active conversation's password hash.
+  bool verifyPassword(String password) {
+    if (!_activeConversationIsPrivate || _activeConversationPasswordHash == null) {
+      return true; // Public conversations or no password set
+    }
+    final hash = _hashPassword(password);
+    return hash == _activeConversationPasswordHash;
+  }
+
+  String _hashPassword(String password) {
+    final bytes = utf8.encode(password);
+    final digest = sha256.convert(bytes);
+    return digest.toString();
+  }
 
   Future<void> waitForActiveConversationSync() async {
     final pending = _pendingConversationSync;
@@ -111,9 +130,15 @@ class P2pSessionController extends ChangeNotifier {
     }
   }
 
-  void setActiveConversation(Conversation conversation) {
+  void setActiveConversation(
+    Conversation conversation, {
+    bool isPrivate = false,
+    String? passwordHash,
+  }) {
     _activeConversationId = conversation.id;
     _activeConversationTitle = conversation.title;
+    _activeConversationIsPrivate = isPrivate;
+    _activeConversationPasswordHash = passwordHash;
     _ensureConversationSynced(id: conversation.id, title: conversation.title);
     if (_role == P2pSessionRole.host) {
       _pendingConversationAnnouncement = true;
@@ -611,6 +636,7 @@ class P2pSessionController extends ChangeNotifier {
     final metadata = jsonEncode(<String, dynamic>{
       'id': conversationId,
       'title': conversationTitle,
+      'isPrivate': _activeConversationIsPrivate,
       'at': DateTime.now().toUtc().toIso8601String(),
     });
     final message = '$_conversationAnnouncementPrefix$metadata';
