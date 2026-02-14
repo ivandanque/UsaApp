@@ -29,7 +29,28 @@ class ChatMessageQueryService {
       _lastEmitted.remove(conversationId);
     }
 
-    return _streams.putIfAbsent(conversationId, () {
+    final cachedStream = _streams[conversationId];
+    if (cachedStream != null) {
+      // Stream already exists and controller is still open.
+      // Defensively schedule a replay of the last snapshot so that a new
+      // subscriber receives data even if onListen doesn't fire (which
+      // happens when a previous subscriber was paused instead of cancelled,
+      // keeping the listener count > 0).
+      final ctrl = _controllers[conversationId];
+      final previously = _lastEmitted[conversationId];
+      if (ctrl != null && !ctrl.isClosed && previously != null) {
+        // Schedule the replay as a microtask so it arrives after the caller
+        // has finished setting up its .listen() handler.
+        scheduleMicrotask(() {
+          if (!ctrl.isClosed && ctrl.hasListener) {
+            ctrl.add(previously);
+          }
+        });
+      }
+      return cachedStream;
+    }
+
+    final stream = () {
       // DEBUG: log which DB instance is used for this watch
       const tag = 'ChatMessageQueryService';
       final logger = const Logger(tag);
@@ -85,8 +106,12 @@ class ChatMessageQueryService {
         logger.info(
           '[ChatMessageQueryService] controller.onCancel convo=$conversationId',
         );
-        await sub?.cancel();
+        // Capture and null-out `sub` immediately so that if a new subscriber
+        // triggers onListen during the async cancel below, onListen will
+        // correctly see sub == null and create a fresh DB subscription.
+        final activeSub = sub;
         sub = null;
+        await activeSub?.cancel();
         // small delay to allow any pending stream-work to settle before closing
         await Future<void>.delayed(Duration.zero);
         if (!controller.hasListener) {
@@ -102,7 +127,9 @@ class ChatMessageQueryService {
 
       _controllers[conversationId] = controller;
       return controller.stream;
-    });
+    }();
+    _streams[conversationId] = stream;
+    return stream;
   }
 
   /// Close all controllers and subscriptions. Used when shutting down the app.

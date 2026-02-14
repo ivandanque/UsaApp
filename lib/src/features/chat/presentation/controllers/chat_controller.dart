@@ -166,6 +166,12 @@ class ChatController extends ChangeNotifier {
             }),
           );
           notifyListeners();
+        }, onError: (Object error, StackTrace? stack) {
+          const logTag = 'ChatController';
+          final logger = const Logger(logTag);
+          logger.info(
+            '[ChatController:$hashCode] stream error for convo ${_conversation.id}: $error',
+          );
         });
   }
 
@@ -504,18 +510,14 @@ class ChatController extends ChangeNotifier {
   @override
   void dispose() {
     messageFieldController.dispose();
-    // Pause subscription instead of cancelling to avoid closing the
-    // underlying Drift query stream immediately. Closing the query
-    // can schedule timers that conflict with the test harness' fake
-    // timers. Pausing prevents the query from being closed while
-    // still allowing this controller to be disposed. This is a
-    // pragmatic lifecycle choice for now; consider a more explicit
-    // owner-managed stream lifecycle for production.
-    try {
-      _subscription?.pause();
-    } catch (_) {
-      _subscription?.cancel();
-    }
+    // Cancel the subscription so the broadcast StreamController in
+    // ChatMessageQueryService can detect 0 listeners and fire onCancel
+    // (which defers teardown via Future.delayed, giving a new controller
+    // time to re-subscribe). Pausing instead of cancelling keeps a phantom
+    // listener alive, preventing onListen from firing for the next
+    // subscriber — which causes the "Loading messages..." hang.
+    _subscription?.cancel();
+    _subscription = null;
     super.dispose();
   }
 }
