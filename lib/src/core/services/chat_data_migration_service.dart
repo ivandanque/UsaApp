@@ -76,11 +76,13 @@ class ChatDataMigrationService {
         errors.add(roomsResult.error!);
       }
 
-      // 4. Mark migration as complete
-      await _prefs.setBool(_migrationCompleteKey, true);
-
-      // 5. Clean up old SharedPreferences data
-      await _cleanupOldData();
+      // 4. Mark migration as complete and clean up only if no errors occurred.
+      // If any step failed, preserve the original SharedPreferences data so
+      // a future migration attempt can retry without data loss.
+      if (errors.isEmpty) {
+        await _prefs.setBool(_migrationCompleteKey, true);
+        await _cleanupOldData();
+      }
 
       return MigrationResult(
         conversationsMigrated: conversationsMigrated,

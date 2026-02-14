@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import '../../../../core/database/app_database.dart';
 import '../../domain/entities/conversation.dart';
@@ -140,10 +141,10 @@ class DriftConversationDataSource {
 
   String _generateId() {
     const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final random = DateTime.now().microsecondsSinceEpoch;
+    final random = Random.secure();
     final buffer = StringBuffer();
     for (var i = 0; i < 12; i++) {
-      buffer.write(alphabet[(random + i) % alphabet.length]);
+      buffer.write(alphabet[random.nextInt(alphabet.length)]);
     }
     return buffer.toString();
   }

@@ -184,13 +184,16 @@ class AppDatabase extends _$AppDatabase {
   }
 
   /// Search messages by content.
+  ///
+  /// Uses drift's [contains] which wraps the query in `%..%` but
+  /// parameterises the value, preventing LIKE wildcard injection.
   Future<List<ChatMessageEntry>> searchMessages(
     String query, {
     String? conversationId,
     int limit = 50,
   }) {
     final q = select(chatMessages)
-      ..where((t) => t.content.like('%$query%'))
+      ..where((t) => t.content.contains(query))
       ..orderBy([(t) => OrderingTerm.desc(t.sentAt)])
       ..limit(limit);
 
