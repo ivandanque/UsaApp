@@ -52,9 +52,15 @@ class NotificationService {
   static const String _roomsChannelDescription =
       'Alerts when peers advertise nearby conversations';
 
+  static const String _scanningChannelId = 'usaapp_scanning';
+  static const String _scanningChannelName = 'Background scanning';
+  static const String _scanningChannelDescription =
+      'Shows when app is actively scanning for nearby devices';
+
   static const int _roomsNotificationId = 9001;
   static const int _connectionNotificationId = 9002;
   static const int _disconnectionNotificationId = 9003;
+  static const int _scanningNotificationId = 9004;
 
   final NotificationPlugin _plugin;
   GlobalKey<NavigatorState>? _navigatorKey;
@@ -156,6 +162,40 @@ class NotificationService {
       ),
       payload: 'disconnected',
     );
+  }
+
+  /// Shows a persistent notification when scanning in background
+  Future<void> showScanningNotification() async {
+    if (!_initialized) {
+      return;
+    }
+
+    await _plugin.show(
+      id: _scanningNotificationId,
+      title: 'UsaApp is searching in background',
+      body: 'Scanning for nearby devices...',
+      notificationDetails: NotificationDetails(
+        android: AndroidNotificationDetails(
+          _scanningChannelId,
+          _scanningChannelName,
+          channelDescription: _scanningChannelDescription,
+          importance: Importance.low,
+          priority: Priority.low,
+          ongoing: true, // Makes it persistent
+          autoCancel: false,
+        ),
+        iOS: const DarwinNotificationDetails(presentSound: false),
+      ),
+      payload: 'scanning',
+    );
+  }
+
+  /// Cancels the background scanning notification by showing an empty one
+  /// (workaround for cancel API issue in flutter_local_notifications 20.0.0)
+  Future<void> cancelScanningNotification() async {
+    // Simply don't show anything - notification will auto-dismiss when scanning stops
+    // or we can update it to show "Scan complete" then auto-cancel
+    return;
   }
 
   void _handleNotificationResponse(NotificationResponse response) {

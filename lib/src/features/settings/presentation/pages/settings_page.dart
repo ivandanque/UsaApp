@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../controllers/settings_controller.dart';
 
@@ -13,12 +14,21 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   late final SettingsController _controller;
+  String _appVersion = '';
 
   @override
   void initState() {
     super.initState();
     _controller = SettingsController();
     _controller.refreshStatus();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    setState(() {
+      _appVersion = packageInfo.version;
+    });
   }
 
   @override
@@ -161,7 +171,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (_controller.backgroundScanningEnabled)
                     Card(
                       child: ListTile(
-                        title: const Text('Scan cadence (seconds)'),
+                        title: const Text('Scan interval (seconds)'),
                         subtitle: Text('Every ${_controller.scanCadenceSeconds} second(s)'),
                         trailing: SizedBox(
                           width: 120,
@@ -185,6 +195,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               );
             },
+          ),
+          const SizedBox(height: 24),
+          // App version
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.info_outline),
+              title: const Text('App Version'),
+              subtitle: Text(_appVersion.isEmpty ? 'Loading...' : _appVersion),
+            ),
           ),
         ],
       ),
