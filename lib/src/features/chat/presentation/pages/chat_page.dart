@@ -74,6 +74,34 @@ class _ChatPageState extends State<ChatPage> {
     _controller.addListener(_handleMessagesChanged);
     _composerFocusNode.addListener(_handleComposerFocusChange);
 
+    // Set up download error callback to show user-visible messages
+    _controller.onDownloadError = (String message) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            backgroundColor: Colors.red,
+            action: SnackBarAction(
+              label: 'OK',
+              textColor: Colors.white,
+              onPressed: () {},
+            ),
+          ),
+        );
+      }
+    };
+    
+    _controller.onDownloadInfo = (String message) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(message),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    };
+
     _incomingSubscription = _p2pController.incomingMessages.listen((
       payload,
     ) async {
@@ -287,54 +315,74 @@ class _ChatPageState extends State<ChatPage> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: message.attachments.map((a) {
                                 if (a.mimeType.startsWith('image/')) {
-                                  final file = File(a.uri);
-                                  if (file.existsSync()) {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 6.0),
-                                      child: ConstrainedBox(
-                                        constraints: const BoxConstraints(
-                                          maxWidth: 200,
-                                          maxHeight: 200,
-                                        ),
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(
-                                            8,
+                                  final uri = a.uri.trim();
+                                  if (uri.isNotEmpty) {
+                                    final file = File(uri);
+                                    if (file.existsSync()) {
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 6.0),
+                                        child: ConstrainedBox(
+                                          constraints: const BoxConstraints(
+                                            maxWidth: 200,
+                                            maxHeight: 200,
                                           ),
-                                          child: Image.file(
-                                            file,
-                                            fit: BoxFit.cover,
-                                          ),
-                                        ),
-                                      ),
-                                    );
-                                  } else {
-                                    return Padding(
-                                      padding: const EdgeInsets.only(top: 6.0),
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.image),
-                                          const SizedBox(width: 8),
-                                          Expanded(child: Text(a.filename)),
-                                          // Show retry button if downloads failed
-                                          if ((_controller.downloadFailures[a
-                                                      .id] ??
-                                                  0) >=
-                                              3)
-                                            IconButton(
-                                              icon: const Icon(Icons.refresh),
-                                              tooltip: 'Retry download',
-                                              onPressed: () async {
-                                                await _controller
-                                                    .requestAttachmentDownload(
-                                                      message.id,
-                                                      a,
-                                                    );
-                                              },
+                                          child: ClipRRect(
+                                            borderRadius: BorderRadius.circular(
+                                              8,
                                             ),
-                                        ],
-                                      ),
-                                    );
+                                            child: Image.file(
+                                              file,
+                                              fit: BoxFit.cover,
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }
                                   }
+                                  
+                                  // Image not yet downloaded or download failed
+                                  final failureCount = _controller.downloadFailures[a.id] ?? 0;
+                                  final isDownloading = failureCount < 3 && uri.isEmpty;
+                                  
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 6.0),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          isDownloading ? Icons.downloading : Icons.image,
+                                        ),
+                                        const SizedBox(width: 8),
+                                        Expanded(
+                                          child: Text(
+                                            isDownloading 
+                                                ? '${a.filename} (downloading...)' 
+                                                : a.filename,
+                                          ),
+                                        ),
+                                        // Show retry button if downloads failed
+                                        if (failureCount >= 3)
+                                          IconButton(
+                                            icon: const Icon(Icons.refresh),
+                                            tooltip: 'Retry download',
+                                            onPressed: () async {
+                                              await _controller
+                                                  .requestAttachmentDownload(
+                                                    message.id,
+                                                    a,
+                                                  );
+                                            },
+                                          )
+                                        else if (isDownloading)
+                                          const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  );
                                 }
 
                                 // Non-image file

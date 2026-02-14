@@ -50,6 +50,12 @@ class ChatController extends ChangeNotifier {
   Conversation _conversation;
   final Map<String, PeerIdentity> _knownPeers;
 
+  /// Optional callback to show error messages to user
+  void Function(String message)? onDownloadError;
+  
+  /// Optional callback to show info messages to user
+  void Function(String message)? onDownloadInfo;
+
   final TextEditingController messageFieldController = TextEditingController();
 
   StreamSubscription<List<ChatMessage>>? _subscription;
@@ -122,16 +128,42 @@ class ChatController extends ChangeNotifier {
               }
             } catch (_) {}
           } catch (_) {}
+          // Build new view models from DB, but preserve any in-memory
+          // attachment URIs that were set by a download that hasn't been
+          // persisted to DB yet (race between download completion and
+          // the next DB watch emission).
+          final oldByMsgId = <String, ChatMessageViewModel>{
+            for (final m in _messages) m.id: m,
+          };
+
           _messages.clear();
           _messages.addAll(
-            messages.map(
-              (message) => ChatMessageViewModel.fromEntity(
+            messages.map((message) {
+              final vm = ChatMessageViewModel.fromEntity(
                 message,
                 localPeerId: _identity.id,
                 localIdentity: _identity,
                 knownPeers: _knownPeers,
-              ),
-            ),
+              );
+
+              // Merge in-memory attachment URIs that are newer than DB
+              final oldVm = oldByMsgId[vm.id];
+              if (oldVm != null && oldVm.attachments.isNotEmpty) {
+                for (int i = 0; i < vm.attachments.length; i++) {
+                  final dbA = vm.attachments[i];
+                  if (dbA.uri.isEmpty) {
+                    // Check if in-memory version has a downloaded URI
+                    final oldA = oldVm.attachments
+                        .where((a) => a.id == dbA.id)
+                        .firstOrNull;
+                    if (oldA != null && oldA.uri.isNotEmpty) {
+                      vm.attachments[i] = dbA.copyWith(uri: oldA.uri);
+                    }
+                  }
+                }
+              }
+              return vm;
+            }),
           );
           notifyListeners();
         });
@@ -218,6 +250,23 @@ class ChatController extends ChangeNotifier {
       }
     }
 
+    // Save attachments with empty URI so the DB has attachment metadata
+    // (filename, mimeType, etc.) even before the file is downloaded.
+    // Strip senderHostIp/senderPort from persisted attachments (transport-only).
+    final persistAttachments = message.attachments.map((a) {
+      return ChatAttachment(
+        id: a.id,
+        filename: a.filename,
+        mimeType: a.mimeType,
+        sizeBytes: a.sizeBytes,
+        uri: '', // empty until download completes
+      );
+    }).toList();
+
+    debugPrint(
+      'ChatController: receiveMessage saving ${persistAttachments.length} attachment(s) to DB for msg ${message.id}',
+    );
+
     await _sendMessage(
       SendMessageParams(
         id: message.id,
@@ -226,6 +275,8 @@ class ChatController extends ChangeNotifier {
         sender: message.sender,
         content: message.content,
         sentAt: message.sentAt,
+        attachments: persistAttachments.isNotEmpty ? persistAttachments : null,
+        attachmentsAreExternal: true,
       ),
     );
   }
@@ -253,13 +304,26 @@ class ChatController extends ChangeNotifier {
 
     // If message contains attachments with transport info, attempt automatic download
     if (chatMsg.attachments.isNotEmpty) {
+      debugPrint(
+        'ChatController: Received message with ${chatMsg.attachments.length} attachment(s)',
+      );
       for (final attachment in chatMsg.attachments) {
+        debugPrint(
+          'ChatController: Attachment ${attachment.filename} - IP: ${attachment.senderHostIp}, Port: ${attachment.senderPort}, URI: ${attachment.uri}, ID: ${attachment.id}',
+        );
         if (attachment.senderHostIp != null && 
             attachment.senderPort != null && 
             attachment.uri.isEmpty) {
           // Store attachment object for retry attempts
           _pendingFileInfos[attachment.id] = attachment.toJson();
+          debugPrint(
+            'ChatController: Starting download for ${attachment.filename} from http://${attachment.senderHostIp}:${attachment.senderPort}/file?id=${attachment.id}',
+          );
           unawaited(_attemptDownloadForAttachment(chatMsg.id, attachment));
+        } else {
+          debugPrint(
+            'ChatController: Skipping download - missing info or already has URI',
+          );
         }
       }
     }
@@ -301,11 +365,22 @@ class ChatController extends ChangeNotifier {
     final hostIp = attachment.senderHostIp;
     final port = attachment.senderPort;
     final name = attachment.filename;
-    if (hostIp == null || port == null) return;
+    if (hostIp == null || port == null) {
+      debugPrint(
+        'ChatController: Cannot download attachment $fileId - missing host IP or port',
+      );
+      return;
+    }
 
     final uri = Uri.parse(
       'http://$hostIp:$port/file?id=${Uri.encodeComponent(fileId)}',
     );
+
+    debugPrint(
+      'ChatController: Attempting to download attachment $name from $uri',
+    );
+    
+    onDownloadInfo?.call('Downloading $name...');
 
     int attempts = 0;
     const maxAttempts = 3;
@@ -314,14 +389,21 @@ class ChatController extends ChangeNotifier {
       try {
         final resp = await http.get(uri).timeout(const Duration(seconds: 10));
         if (resp.statusCode == 200) {
-          // write to temp dir
-          final dir = await getTemporaryDirectory();
+          debugPrint(
+            'ChatController: Successfully downloaded ${resp.bodyBytes.length} bytes for $name',
+          );
+          // write to permanent app storage
+          final dir = await getApplicationDocumentsDirectory();
           final outDir = Directory('${dir.path}/attachments');
           if (!outDir.existsSync()) outDir.createSync(recursive: true);
           final localPath =
               '${outDir.path}/$fileId-${Uri.encodeComponent(name)}';
           final outFile = File(localPath);
           await outFile.writeAsBytes(resp.bodyBytes, flush: true);
+
+          debugPrint(
+            'ChatController: Saved attachment to $localPath',
+          );
 
           // Update failure count and persist attachment URI in stored message
           _downloadFailures.remove(fileId);
@@ -333,13 +415,30 @@ class ChatController extends ChangeNotifier {
             final vm = _messages[idx];
             updatedAttachments = vm.attachments.map((a) {
               if (a.id == fileId) {
+                debugPrint(
+                  'ChatController: Updating attachment ${a.id} with local URI: $localPath',
+                );
                 return a.copyWith(uri: localPath);
               }
               return a;
             }).toList();
-            // Update in-memory view model (note: this mutates the list)
-            vm.attachments.clear();
-            vm.attachments.addAll(updatedAttachments);
+            
+            // Create new ViewModel instance to trigger rebuild
+            _messages[idx] = ChatMessageViewModel(
+              id: vm.id,
+              conversationId: vm.conversationId,
+              senderId: vm.senderId,
+              sender: vm.sender,
+              content: vm.content,
+              sentAt: vm.sentAt,
+              attachments: updatedAttachments,
+              isLocal: vm.isLocal,
+              senderIdentity: vm.senderIdentity,
+            );
+            
+            debugPrint(
+              'ChatController: Updated message ${vm.id} with new attachment list, notifying listeners',
+            );
             notifyListeners();
             
             // Persist updated attachment URI to DB
@@ -359,9 +458,15 @@ class ChatController extends ChangeNotifier {
           return;
         } else {
           // treat as failure and retry
+          debugPrint(
+            'ChatController: Download failed for $name - status ${resp.statusCode}',
+          );
           _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
         }
-      } catch (_) {
+      } catch (e) {
+        debugPrint(
+          'ChatController: Download error for $name (attempt $attempts/$maxAttempts): $e',
+        );
         _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
       }
 
@@ -369,7 +474,12 @@ class ChatController extends ChangeNotifier {
       await Future<void>.delayed(Duration(milliseconds: 400 * attempts));
     }
 
+    debugPrint(
+      'ChatController: Failed to download $name after $maxAttempts attempts',
+    );
+    onDownloadError?.call('Failed to download $name. Tap retry button.');
     // After max attempts, leave failure count which UI can use to show manual refresh
+    notifyListeners(); // Refresh UI to show retry button
     return;
   }
 
@@ -448,7 +558,7 @@ class ChatMessageViewModel {
       sender: senderIdentity.displayName,
       content: entity.content,
       sentAt: entity.sentAt,
-      attachments: entity.attachments,
+      attachments: List<ChatAttachment>.from(entity.attachments),
       isLocal: isLocal,
       senderIdentity: senderIdentity,
     );

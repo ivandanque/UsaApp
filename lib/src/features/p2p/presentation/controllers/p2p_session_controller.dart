@@ -209,6 +209,9 @@ class P2pSessionController extends ChangeNotifier {
       _isScanning = true;
       notifyListeners();
 
+      // Show persistent scanning notification
+      unawaited(_notificationService.showScanningNotification());
+
       try {
         _scanSubscription = await client.startScan(
           (devices) {
@@ -221,10 +224,12 @@ class P2pSessionController extends ChangeNotifier {
           onDone: () {
             _isScanning = false;
             _statusMessage ??= 'Scan finished.';
+            unawaited(_notificationService.cancelScanningNotification());
             notifyListeners();
           },
           onError: (Object error) {
             _isScanning = false;
+            unawaited(_notificationService.cancelScanningNotification());
             _setError('Discovery error: $error');
           },
         );
@@ -245,6 +250,7 @@ class P2pSessionController extends ChangeNotifier {
 
     await _guardedAction(
       () async {
+        unawaited(_notificationService.cancelScanningNotification());
         final client = await _p2pService.ensureClientInitialized();
         await client.stopScan();
       },
@@ -702,7 +708,7 @@ class P2pSessionController extends ChangeNotifier {
             conversationTitle: _activeConversationTitle ?? 'Conversation',
             senderId: AppDependencies.instance.peerIdentity.id,
             senderName: AppDependencies.instance.peerIdentity.displayName,
-            content: fileName,
+            content: '',
             sentAt: DateTime.now().toUtc(),
             files: [fileMap],
           );
@@ -742,7 +748,7 @@ class P2pSessionController extends ChangeNotifier {
             conversationTitle: _activeConversationTitle ?? 'Conversation',
             senderId: AppDependencies.instance.peerIdentity.id,
             senderName: AppDependencies.instance.peerIdentity.displayName,
-            content: fileName,
+            content: '',
             sentAt: DateTime.now().toUtc(),
             files: [fileMap],
           );

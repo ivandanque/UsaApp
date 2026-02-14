@@ -20,6 +20,15 @@ class ChatMessageQueryService {
   final Map<String, List<ChatMessageModel>> _lastEmitted = {};
 
   Stream<List<ChatMessageModel>> watch(String conversationId) {
+    // Check if we have a cached stream but its controller is closed (race with
+    // onCancel). If so, remove it so we create a fresh one below.
+    final existing = _controllers[conversationId];
+    if (existing != null && existing.isClosed) {
+      _controllers.remove(conversationId);
+      _streams.remove(conversationId);
+      _lastEmitted.remove(conversationId);
+    }
+
     return _streams.putIfAbsent(conversationId, () {
       // DEBUG: log which DB instance is used for this watch
       const tag = 'ChatMessageQueryService';
@@ -30,18 +39,20 @@ class ChatMessageQueryService {
       final controller = StreamController<List<ChatMessageModel>>.broadcast();
       StreamSubscription<List<ChatMessageModel>>? sub;
 
-      // Start DB subscription only when the controller has a listener so the
-      // initial DB emission is not lost. This ensures new subscribers receive
-      // the current state rather than missing the first event.
       controller.onListen = () {
-        if (sub != null) return;
-        // If we already have a DB subscription active for this convo, and
-        // a snapshot was previously received, emit that snapshot immediately
-        // so new listeners get the current state without waiting for the
-        // next DB-triggered emission.
+        if (sub != null) {
+          // Already subscribed — replay last known snapshot for new listener
+          final previously = _lastEmitted[conversationId];
+          if (previously != null && !controller.isClosed) {
+            controller.add(previously);
+          }
+          return;
+        }
+
+        // Replay cached snapshot immediately so new listeners don't wait
         final previously = _lastEmitted[conversationId];
-        if (sub != null && previously != null) {
-          if (!controller.isClosed) controller.add(previously);
+        if (previously != null && !controller.isClosed) {
+          controller.add(previously);
         }
 
         sub = _db
@@ -84,7 +95,7 @@ class ChatMessageQueryService {
           );
           _controllers.remove(conversationId);
           _streams.remove(conversationId);
-          _lastEmitted.remove(conversationId);
+          // Keep _lastEmitted so history page can replay instantly
           await controller.close();
         }
       };
