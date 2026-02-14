@@ -62,6 +62,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(title: const Text('Conversations')),
       body: AnimatedBuilder(
         animation: _controller,
@@ -184,11 +185,33 @@ class _ConversationModePageState extends State<ConversationModePage> {
           );
           conversation = ensured;
         }
+        // Start with persisted privacy from the conversation itself.
+        isPrivate = conversation.isPrivate;
+        passwordHash = conversation.passwordHash;
+        // Override with controller metadata if P2P announcement says private
+        // (covers the case where host just announced a private conversation
+        // and the DB hasn't been synced yet).
+        if (_controller.activeConversationIsPrivate) {
+          isPrivate = true;
+          passwordHash ??= _controller.activeConversationPasswordHash;
+        }
       }
     }
 
     if (conversation == null && _selectedConversation != null) {
-      conversation = _selectedConversation;
+      // Re-read from DB to get the latest persisted privacy metadata.
+      final fresh = await _conversationStore.getConversationById(
+        _selectedConversation!.id,
+      );
+      conversation = fresh ?? _selectedConversation;
+      isPrivate = conversation!.isPrivate;
+      passwordHash = conversation.passwordHash;
+      // Also check controller in case the P2P announcement carried newer info.
+      if (_controller.activeConversationId == conversation.id &&
+          _controller.activeConversationIsPrivate) {
+        isPrivate = true;
+        passwordHash ??= _controller.activeConversationPasswordHash;
+      }
     }
 
     if (conversation == null) {
@@ -204,7 +227,16 @@ class _ConversationModePageState extends State<ConversationModePage> {
 
     final conversationToOpen = conversation;
     setState(() => _selectedConversation = conversationToOpen);
-    
+
+    // Always check the P2P controller's privacy metadata for the active
+    // conversation, regardless of how the conversation was selected. This
+    // catches the case where the user dismisses the auto-open prompt then
+    // manually taps "Open conversation".
+    if (_controller.activeConversationIsPrivate) {
+      isPrivate = true;
+      passwordHash ??= _controller.activeConversationPasswordHash;
+    }
+
     // If joining a private conversation as a client, prompt for password
     if (isPrivate && _controller.role == P2pSessionRole.client) {
       final password = await _promptForPassword();
@@ -226,7 +258,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
         return;
       }
     }
-    
+
     _controller.setActiveConversation(
       conversationToOpen,
       isPrivate: isPrivate,
@@ -319,7 +351,8 @@ class _ConversationModePageState extends State<ConversationModePage> {
     }
   }
 
-  Future<({Conversation conversation, bool isPrivate, String? passwordHash})?> _showConversationPicker() async {
+  Future<({Conversation conversation, bool isPrivate, String? passwordHash})?>
+  _showConversationPicker() async {
     final result = await showModalBottomSheet<dynamic>(
       context: context,
       isScrollControlled: true,
@@ -331,12 +364,21 @@ class _ConversationModePageState extends State<ConversationModePage> {
     );
 
     if (result == null) return null;
-    
+
     // Result can be either a Conversation or a record with privacy details
     if (result is Conversation) {
-      return (conversation: result, isPrivate: false, passwordHash: null);
+      return (
+        conversation: result,
+        isPrivate: result.isPrivate,
+        passwordHash: result.passwordHash,
+      );
     } else {
-      return result as ({Conversation conversation, bool isPrivate, String? passwordHash});
+      return result
+          as ({
+            Conversation conversation,
+            bool isPrivate,
+            String? passwordHash,
+          });
     }
   }
 }
@@ -367,106 +409,93 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final media = MediaQuery.of(context);
-        final bottomPadding = media.viewInsets.bottom + 24;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.only(
+          left: 24,
+          right: 24,
+          top: 24,
+          bottom: 24,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FilledButton.icon(
+              icon: _isCreating
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.add_comment_outlined),
+              label: Text(_isCreating ? 'Creating…' : 'Create new chat'),
+              onPressed: _isCreating ? null : _handleCreatePressed,
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'Choose an existing conversation',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 12),
+            Flexible(
+              child: StreamBuilder<List<Conversation>>(
+                stream: _conversationsStream,
+                builder: (context, snapshot) {
+                  final conversations = snapshot.data ?? const <Conversation>[];
+                  if (conversations.isEmpty) {
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: 24),
+                        child: Text('No conversations yet. Create a new one!'),
+                      ),
+                    );
+                  }
 
-        return AnimatedPadding(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOut,
-          padding: EdgeInsets.only(
-            left: 24,
-            right: 24,
-            top: 24,
-            bottom: bottomPadding,
-          ),
-          child: SizedBox(
-            height: constraints.maxHeight,
-            child: Column(
-              mainAxisSize: MainAxisSize.max,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                FilledButton.icon(
-                  icon: _isCreating
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.add_comment_outlined),
-                  label: Text(_isCreating ? 'Creating…' : 'Create new chat'),
-                  onPressed: _isCreating ? null : _handleCreatePressed,
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  'Choose an existing conversation',
-                  style: Theme.of(context).textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: StreamBuilder<List<Conversation>>(
-                    stream: _conversationsStream,
-                    builder: (context, snapshot) {
-                      final conversations =
-                          snapshot.data ?? const <Conversation>[];
-                      if (conversations.isEmpty) {
-                        return const Center(
-                          child: Padding(
-                            padding: EdgeInsets.symmetric(vertical: 24),
-                            child: Text(
-                              'No conversations yet. Create a new one!',
+                  return ListView.separated(
+                    shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: conversations.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (context, index) {
+                      final conversation = conversations[index];
+                      final isSelected =
+                          widget.selectedConversationId == conversation.id;
+                      return ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(
+                          isSelected
+                              ? Icons.radio_button_checked
+                              : Icons.radio_button_off,
+                        ),
+                        title: Text(conversation.title),
+                        subtitle: Text(
+                          'Updated ${_relativeTime(conversation.updatedAt)}',
+                        ),
+                        onTap: () => Navigator.of(context).pop(conversation),
+                        trailing: PopupMenuButton<_ConversationAction>(
+                          onSelected: (action) =>
+                              _onConversationAction(action, conversation),
+                          itemBuilder: (context) => const [
+                            PopupMenuItem<_ConversationAction>(
+                              value: _ConversationAction.rename,
+                              child: Text('Rename'),
                             ),
-                          ),
-                        );
-                      }
-
-                      return ListView.separated(
-                        padding: EdgeInsets.zero,
-                        itemCount: conversations.length,
-                        separatorBuilder: (_, _) => const SizedBox(height: 8),
-                        itemBuilder: (context, index) {
-                          final conversation = conversations[index];
-                          final isSelected =
-                              widget.selectedConversationId == conversation.id;
-                          return ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: Icon(
-                              isSelected
-                                  ? Icons.radio_button_checked
-                                  : Icons.radio_button_off,
+                            PopupMenuItem<_ConversationAction>(
+                              value: _ConversationAction.delete,
+                              child: Text('Delete'),
                             ),
-                            title: Text(conversation.title),
-                            subtitle: Text(
-                              'Updated ${_relativeTime(conversation.updatedAt)}',
-                            ),
-                            onTap: () =>
-                                Navigator.of(context).pop(conversation),
-                            trailing: PopupMenuButton<_ConversationAction>(
-                              onSelected: (action) =>
-                                  _onConversationAction(action, conversation),
-                              itemBuilder: (context) => const [
-                                PopupMenuItem<_ConversationAction>(
-                                  value: _ConversationAction.rename,
-                                  child: Text('Rename'),
-                                ),
-                                PopupMenuItem<_ConversationAction>(
-                                  value: _ConversationAction.delete,
-                                  child: Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
+                          ],
+                        ),
                       );
                     },
-                  ),
-                ),
-              ],
+                  );
+                },
+              ),
             ),
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 
@@ -478,11 +507,15 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
 
     setState(() => _isCreating = true);
     try {
-      final conversation = await widget.store.createConversation(trimmedName);
       String? passwordHash;
       if (details.isPrivate && details.password != null) {
         passwordHash = _hashPassword(details.password!);
       }
+      final conversation = await widget.store.createConversation(
+        trimmedName,
+        isPrivate: details.isPrivate,
+        passwordHash: passwordHash,
+      );
       if (!mounted) {
         return;
       }
@@ -505,7 +538,8 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
     return digest.toString();
   }
 
-  Future<({String name, bool isPrivate, String? password})?> _promptForConversationDetails() async {
+  Future<({String name, bool isPrivate, String? password})?>
+  _promptForConversationDetails() async {
     return showDialog<({String name, bool isPrivate, String? password})>(
       context: context,
       builder: (context) => const _ConversationDetailsDialog(
@@ -700,7 +734,8 @@ class _ConversationDetailsDialog extends StatefulWidget {
       _ConversationDetailsDialogState();
 }
 
-class _ConversationDetailsDialogState extends State<_ConversationDetailsDialog> {
+class _ConversationDetailsDialogState
+    extends State<_ConversationDetailsDialog> {
   late final TextEditingController _nameController;
   late final TextEditingController _passwordController;
   bool _isPrivate = false;
@@ -786,7 +821,9 @@ class _ConversationDetailsDialogState extends State<_ConversationDetailsDialog> 
                   labelText: 'Password',
                   suffixIcon: IconButton(
                     icon: Icon(
-                      _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                      _obscurePassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
                     ),
                     onPressed: () {
                       setState(() => _obscurePassword = !_obscurePassword);

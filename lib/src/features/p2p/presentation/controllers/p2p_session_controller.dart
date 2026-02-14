@@ -31,11 +31,13 @@ class P2pSessionController extends ChangeNotifier {
   }) : _p2pService = p2pService,
        _conversationStore = conversationStore,
        _latencyProbeService = latencyProbeService,
-       _notificationService = notificationService ??
-           AppDependencies.instance.notificationService,
-       _backgroundScanningEnabled = backgroundScanningEnabled ??
+       _notificationService =
+           notificationService ?? AppDependencies.instance.notificationService,
+       _backgroundScanningEnabled =
+           backgroundScanningEnabled ??
            (() => AppDependencies.instance.backgroundScanningEnabled),
-       _scanCadenceSeconds = scanCadenceSeconds ??
+       _scanCadenceSeconds =
+           scanCadenceSeconds ??
            (() => AppDependencies.instance.scanCadenceSeconds);
 
   final P2pService _p2pService;
@@ -101,10 +103,12 @@ class P2pSessionController extends ChangeNotifier {
   String? get activeConversationId => _activeConversationId;
   String? get activeConversationTitle => _activeConversationTitle;
   bool get activeConversationIsPrivate => _activeConversationIsPrivate;
+  String? get activeConversationPasswordHash => _activeConversationPasswordHash;
 
   /// Verify if a password matches the active conversation's password hash.
   bool verifyPassword(String password) {
-    if (!_activeConversationIsPrivate || _activeConversationPasswordHash == null) {
+    if (!_activeConversationIsPrivate ||
+        _activeConversationPasswordHash == null) {
       return true; // Public conversations or no password set
     }
     final hash = _hashPassword(password);
@@ -139,7 +143,12 @@ class P2pSessionController extends ChangeNotifier {
     _activeConversationTitle = conversation.title;
     _activeConversationIsPrivate = isPrivate;
     _activeConversationPasswordHash = passwordHash;
-    _ensureConversationSynced(id: conversation.id, title: conversation.title);
+    _ensureConversationSynced(
+      id: conversation.id,
+      title: conversation.title,
+      isPrivate: isPrivate,
+      passwordHash: passwordHash,
+    );
     if (_role == P2pSessionRole.host) {
       _pendingConversationAnnouncement = true;
       if (isHostingActive) {
@@ -314,8 +323,29 @@ class P2pSessionController extends ChangeNotifier {
           resolvedHostName,
         ),
       );
-      unawaited(client.broadcastText(_conversationRequestMessage));
+      // Request the host's active conversation. Retry a few times in case
+      // the text transport isn't ready immediately after the Wi-Fi handshake.
+      unawaited(_requestConversationWithRetry(client));
     });
+  }
+
+  Future<void> _requestConversationWithRetry(
+    FlutterP2pClient client, {
+    int maxAttempts = 3,
+    Duration delay = const Duration(milliseconds: 800),
+  }) async {
+    for (var i = 0; i < maxAttempts; i++) {
+      try {
+        await client.broadcastText(_conversationRequestMessage);
+      } catch (_) {
+        // Transport may not be ready yet.
+      }
+      // Wait and check if the host has responded.
+      await Future<void>.delayed(delay);
+      if (_activeConversationId != null) {
+        return; // Host responded, no need to retry.
+      }
+    }
   }
 
   Future<void> disconnectFromHost() async {
@@ -518,8 +548,13 @@ class P2pSessionController extends ChangeNotifier {
   void _listenToHost(FlutterP2pHost host) {
     _hostStateSubscription?.cancel();
     _hostStateSubscription = host.streamHotspotState().listen((state) {
+      final wasActive = _hostState?.isActive ?? false;
       _hostState = state;
-      if (state.isActive && _pendingConversationAnnouncement) {
+      // Re-announce whenever the hotspot transitions to active, including
+      // after a stop → re-host cycle where _pendingConversationAnnouncement
+      // was already cleared.
+      if (state.isActive && (!wasActive || _pendingConversationAnnouncement)) {
+        _pendingConversationAnnouncement = true;
         unawaited(_announceActiveConversation());
       }
       notifyListeners();
@@ -599,6 +634,11 @@ class P2pSessionController extends ChangeNotifier {
                 : 'Conversation';
             _activeConversationId = conversationId;
             _activeConversationTitle = title;
+            _activeConversationIsPrivate = decoded['isPrivate'] == true;
+            final hash = decoded['passwordHash'];
+            _activeConversationPasswordHash = hash is String && hash.isNotEmpty
+                ? hash
+                : null;
             _ensureConversationSynced(id: conversationId, title: title);
             notifyListeners();
           }
@@ -643,6 +683,8 @@ class P2pSessionController extends ChangeNotifier {
       'id': conversationId,
       'title': conversationTitle,
       'isPrivate': _activeConversationIsPrivate,
+      if (_activeConversationPasswordHash != null)
+        'passwordHash': _activeConversationPasswordHash,
       'at': DateTime.now().toUtc().toIso8601String(),
     });
     final message = '$_conversationAnnouncementPrefix$metadata';
@@ -763,14 +805,24 @@ class P2pSessionController extends ChangeNotifier {
   }
 
   // Queue a persistence task so UI flows can await metadata sync if needed.
-  void _ensureConversationSynced({required String id, required String title}) {
+  void _ensureConversationSynced({
+    required String id,
+    required String title,
+    bool? isPrivate,
+    String? passwordHash,
+  }) {
     final store = _conversationStore;
     if (store == null) {
       return;
     }
 
     final sync = store
-        .ensureConversationExists(id: id, title: title)
+        .ensureConversationExists(
+          id: id,
+          title: title,
+          isPrivate: isPrivate,
+          passwordHash: passwordHash,
+        )
         .then<void>((_) {});
     _trackConversationSync(sync);
   }

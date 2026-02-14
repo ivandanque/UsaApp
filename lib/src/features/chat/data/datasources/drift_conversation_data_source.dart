@@ -45,15 +45,25 @@ class DriftConversationDataSource {
   Future<Conversation> ensureConversationExists({
     required String id,
     required String title,
+    bool? isPrivate,
+    String? passwordHash,
   }) async {
     final existing = await _db.getConversationById(id);
     final now = DateTime.now().toUtc();
 
     if (existing != null) {
-      if (title.trim().isNotEmpty && existing.title != title.trim()) {
+      final needsTitleUpdate =
+          title.trim().isNotEmpty && existing.title != title.trim();
+      final needsPrivacyUpdate =
+          (isPrivate != null && existing.isPrivate != isPrivate) ||
+          (passwordHash != null && existing.passwordHash != passwordHash);
+
+      if (needsTitleUpdate || needsPrivacyUpdate) {
         final updated = Conversation(
           id: existing.id,
-          title: title.trim(),
+          title: needsTitleUpdate ? title.trim() : existing.title,
+          isPrivate: isPrivate ?? existing.isPrivate,
+          passwordHash: passwordHash ?? existing.passwordHash,
           createdAt: existing.createdAt,
           updatedAt: now,
         );
@@ -66,6 +76,8 @@ class DriftConversationDataSource {
     final newConversation = Conversation(
       id: id,
       title: title.trim().isEmpty ? 'Conversation' : title.trim(),
+      isPrivate: isPrivate ?? false,
+      passwordHash: passwordHash,
       createdAt: now,
       updatedAt: now,
     );
@@ -74,12 +86,18 @@ class DriftConversationDataSource {
   }
 
   /// Create a new conversation with a generated id.
-  Future<Conversation> createConversation(String title) async {
+  Future<Conversation> createConversation(
+    String title, {
+    bool isPrivate = false,
+    String? passwordHash,
+  }) async {
     final id = _generateId();
     final now = DateTime.now().toUtc();
     final conversation = Conversation(
       id: id,
       title: title.trim().isEmpty ? 'Conversation' : title.trim(),
+      isPrivate: isPrivate,
+      passwordHash: passwordHash,
       createdAt: now,
       updatedAt: now,
     );
@@ -94,6 +112,8 @@ class DriftConversationDataSource {
     final updated = Conversation(
       id: existing.id,
       title: existing.title,
+      isPrivate: existing.isPrivate,
+      passwordHash: existing.passwordHash,
       createdAt: existing.createdAt,
       updatedAt: DateTime.now().toUtc(),
     );
@@ -110,6 +130,8 @@ class DriftConversationDataSource {
     final updated = Conversation(
       id: existing.id,
       title: newTitle.trim().isEmpty ? existing.title : newTitle.trim(),
+      isPrivate: existing.isPrivate,
+      passwordHash: existing.passwordHash,
       createdAt: existing.createdAt,
       updatedAt: DateTime.now().toUtc(),
     );
@@ -134,6 +156,8 @@ class DriftConversationDataSource {
     return Conversation(
       id: entry.id,
       title: entry.title,
+      isPrivate: entry.isPrivate,
+      passwordHash: entry.passwordHash,
       createdAt: entry.createdAt,
       updatedAt: entry.updatedAt,
     );
@@ -143,6 +167,8 @@ class DriftConversationDataSource {
     return ConversationEntry(
       id: conversation.id,
       title: conversation.title,
+      isPrivate: conversation.isPrivate,
+      passwordHash: conversation.passwordHash,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
     );

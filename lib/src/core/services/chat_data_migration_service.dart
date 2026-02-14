@@ -122,6 +122,8 @@ class ChatDataMigrationService {
               ConversationEntry(
                 id: conversation.id,
                 title: conversation.title,
+                isPrivate: conversation.isPrivate,
+                passwordHash: conversation.passwordHash,
                 createdAt: conversation.createdAt,
                 updatedAt: conversation.updatedAt,
               ),

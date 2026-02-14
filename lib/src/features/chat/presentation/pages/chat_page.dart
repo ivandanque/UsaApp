@@ -67,7 +67,14 @@ class _ChatPageState extends State<ChatPage> {
       if (!mounted) {
         return;
       }
-      _p2pController.setActiveConversation(widget.conversation);
+      // Preserve existing privacy settings so the announcement isn't
+      // overwritten with isPrivate=false when navigating from the
+      // conversation picker that already set them.
+      _p2pController.setActiveConversation(
+        widget.conversation,
+        isPrivate: _p2pController.activeConversationIsPrivate,
+        passwordHash: _p2pController.activeConversationPasswordHash,
+      );
     });
     unawaited(_controller.start());
     _lastMessageCount = _controller.messages.length;

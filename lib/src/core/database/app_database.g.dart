@@ -644,6 +644,32 @@ class $ConversationsTable extends Conversations
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _isPrivateMeta = const VerificationMeta(
+    'isPrivate',
+  );
+  @override
+  late final GeneratedColumn<bool> isPrivate = GeneratedColumn<bool>(
+    'is_private',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_private" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  static const VerificationMeta _passwordHashMeta = const VerificationMeta(
+    'passwordHash',
+  );
+  @override
+  late final GeneratedColumn<String> passwordHash = GeneratedColumn<String>(
+    'password_hash',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _createdAtMeta = const VerificationMeta(
     'createdAt',
   );
@@ -667,7 +693,14 @@ class $ConversationsTable extends Conversations
     requiredDuringInsert: true,
   );
   @override
-  List<GeneratedColumn> get $columns => [id, title, createdAt, updatedAt];
+  List<GeneratedColumn> get $columns => [
+    id,
+    title,
+    isPrivate,
+    passwordHash,
+    createdAt,
+    updatedAt,
+  ];
   @override
   String get aliasedName => _alias ?? actualTableName;
   @override
@@ -692,6 +725,21 @@ class $ConversationsTable extends Conversations
       );
     } else if (isInserting) {
       context.missing(_titleMeta);
+    }
+    if (data.containsKey('is_private')) {
+      context.handle(
+        _isPrivateMeta,
+        isPrivate.isAcceptableOrUnknown(data['is_private']!, _isPrivateMeta),
+      );
+    }
+    if (data.containsKey('password_hash')) {
+      context.handle(
+        _passwordHashMeta,
+        passwordHash.isAcceptableOrUnknown(
+          data['password_hash']!,
+          _passwordHashMeta,
+        ),
+      );
     }
     if (data.containsKey('created_at')) {
       context.handle(
@@ -726,6 +774,14 @@ class $ConversationsTable extends Conversations
         DriftSqlType.string,
         data['${effectivePrefix}title'],
       )!,
+      isPrivate: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_private'],
+      )!,
+      passwordHash: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}password_hash'],
+      ),
       createdAt: attachedDatabase.typeMapping.read(
         DriftSqlType.dateTime,
         data['${effectivePrefix}created_at'],
@@ -747,11 +803,15 @@ class ConversationEntry extends DataClass
     implements Insertable<ConversationEntry> {
   final String id;
   final String title;
+  final bool isPrivate;
+  final String? passwordHash;
   final DateTime createdAt;
   final DateTime updatedAt;
   const ConversationEntry({
     required this.id,
     required this.title,
+    required this.isPrivate,
+    this.passwordHash,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -760,6 +820,10 @@ class ConversationEntry extends DataClass
     final map = <String, Expression>{};
     map['id'] = Variable<String>(id);
     map['title'] = Variable<String>(title);
+    map['is_private'] = Variable<bool>(isPrivate);
+    if (!nullToAbsent || passwordHash != null) {
+      map['password_hash'] = Variable<String>(passwordHash);
+    }
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -769,6 +833,10 @@ class ConversationEntry extends DataClass
     return ConversationsCompanion(
       id: Value(id),
       title: Value(title),
+      isPrivate: Value(isPrivate),
+      passwordHash: passwordHash == null && nullToAbsent
+          ? const Value.absent()
+          : Value(passwordHash),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -782,6 +850,8 @@ class ConversationEntry extends DataClass
     return ConversationEntry(
       id: serializer.fromJson<String>(json['id']),
       title: serializer.fromJson<String>(json['title']),
+      isPrivate: serializer.fromJson<bool>(json['isPrivate']),
+      passwordHash: serializer.fromJson<String?>(json['passwordHash']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -792,6 +862,8 @@ class ConversationEntry extends DataClass
     return <String, dynamic>{
       'id': serializer.toJson<String>(id),
       'title': serializer.toJson<String>(title),
+      'isPrivate': serializer.toJson<bool>(isPrivate),
+      'passwordHash': serializer.toJson<String?>(passwordHash),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -800,11 +872,15 @@ class ConversationEntry extends DataClass
   ConversationEntry copyWith({
     String? id,
     String? title,
+    bool? isPrivate,
+    Value<String?> passwordHash = const Value.absent(),
     DateTime? createdAt,
     DateTime? updatedAt,
   }) => ConversationEntry(
     id: id ?? this.id,
     title: title ?? this.title,
+    isPrivate: isPrivate ?? this.isPrivate,
+    passwordHash: passwordHash.present ? passwordHash.value : this.passwordHash,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
   );
@@ -812,6 +888,10 @@ class ConversationEntry extends DataClass
     return ConversationEntry(
       id: data.id.present ? data.id.value : this.id,
       title: data.title.present ? data.title.value : this.title,
+      isPrivate: data.isPrivate.present ? data.isPrivate.value : this.isPrivate,
+      passwordHash: data.passwordHash.present
+          ? data.passwordHash.value
+          : this.passwordHash,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -822,6 +902,8 @@ class ConversationEntry extends DataClass
     return (StringBuffer('ConversationEntry(')
           ..write('id: $id, ')
           ..write('title: $title, ')
+          ..write('isPrivate: $isPrivate, ')
+          ..write('passwordHash: $passwordHash, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -829,13 +911,16 @@ class ConversationEntry extends DataClass
   }
 
   @override
-  int get hashCode => Object.hash(id, title, createdAt, updatedAt);
+  int get hashCode =>
+      Object.hash(id, title, isPrivate, passwordHash, createdAt, updatedAt);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is ConversationEntry &&
           other.id == this.id &&
           other.title == this.title &&
+          other.isPrivate == this.isPrivate &&
+          other.passwordHash == this.passwordHash &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -843,12 +928,16 @@ class ConversationEntry extends DataClass
 class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
   final Value<String> id;
   final Value<String> title;
+  final Value<bool> isPrivate;
+  final Value<String?> passwordHash;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   final Value<int> rowid;
   const ConversationsCompanion({
     this.id = const Value.absent(),
     this.title = const Value.absent(),
+    this.isPrivate = const Value.absent(),
+    this.passwordHash = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
@@ -856,6 +945,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
   ConversationsCompanion.insert({
     required String id,
     required String title,
+    this.isPrivate = const Value.absent(),
+    this.passwordHash = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
     this.rowid = const Value.absent(),
@@ -866,6 +957,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
   static Insertable<ConversationEntry> custom({
     Expression<String>? id,
     Expression<String>? title,
+    Expression<bool>? isPrivate,
+    Expression<String>? passwordHash,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
     Expression<int>? rowid,
@@ -873,6 +966,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (title != null) 'title': title,
+      if (isPrivate != null) 'is_private': isPrivate,
+      if (passwordHash != null) 'password_hash': passwordHash,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
       if (rowid != null) 'rowid': rowid,
@@ -882,6 +977,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
   ConversationsCompanion copyWith({
     Value<String>? id,
     Value<String>? title,
+    Value<bool>? isPrivate,
+    Value<String?>? passwordHash,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
     Value<int>? rowid,
@@ -889,6 +986,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
     return ConversationsCompanion(
       id: id ?? this.id,
       title: title ?? this.title,
+      isPrivate: isPrivate ?? this.isPrivate,
+      passwordHash: passwordHash ?? this.passwordHash,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       rowid: rowid ?? this.rowid,
@@ -903,6 +1002,12 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
     }
     if (title.present) {
       map['title'] = Variable<String>(title.value);
+    }
+    if (isPrivate.present) {
+      map['is_private'] = Variable<bool>(isPrivate.value);
+    }
+    if (passwordHash.present) {
+      map['password_hash'] = Variable<String>(passwordHash.value);
     }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
@@ -921,6 +1026,8 @@ class ConversationsCompanion extends UpdateCompanion<ConversationEntry> {
     return (StringBuffer('ConversationsCompanion(')
           ..write('id: $id, ')
           ..write('title: $title, ')
+          ..write('isPrivate: $isPrivate, ')
+          ..write('passwordHash: $passwordHash, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
@@ -2051,6 +2158,8 @@ typedef $$ConversationsTableCreateCompanionBuilder =
     ConversationsCompanion Function({
       required String id,
       required String title,
+      Value<bool> isPrivate,
+      Value<String?> passwordHash,
       required DateTime createdAt,
       required DateTime updatedAt,
       Value<int> rowid,
@@ -2059,6 +2168,8 @@ typedef $$ConversationsTableUpdateCompanionBuilder =
     ConversationsCompanion Function({
       Value<String> id,
       Value<String> title,
+      Value<bool> isPrivate,
+      Value<String?> passwordHash,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
       Value<int> rowid,
@@ -2111,6 +2222,16 @@ class $$ConversationsTableFilterComposer
 
   ColumnFilters<String> get title => $composableBuilder(
     column: $table.title,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isPrivate => $composableBuilder(
+    column: $table.isPrivate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get passwordHash => $composableBuilder(
+    column: $table.passwordHash,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -2169,6 +2290,16 @@ class $$ConversationsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<bool> get isPrivate => $composableBuilder(
+    column: $table.isPrivate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get passwordHash => $composableBuilder(
+    column: $table.passwordHash,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
     column: $table.createdAt,
     builder: (column) => ColumnOrderings(column),
@@ -2194,6 +2325,14 @@ class $$ConversationsTableAnnotationComposer
 
   GeneratedColumn<String> get title =>
       $composableBuilder(column: $table.title, builder: (column) => column);
+
+  GeneratedColumn<bool> get isPrivate =>
+      $composableBuilder(column: $table.isPrivate, builder: (column) => column);
+
+  GeneratedColumn<String> get passwordHash => $composableBuilder(
+    column: $table.passwordHash,
+    builder: (column) => column,
+  );
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -2257,12 +2396,16 @@ class $$ConversationsTableTableManager
               ({
                 Value<String> id = const Value.absent(),
                 Value<String> title = const Value.absent(),
+                Value<bool> isPrivate = const Value.absent(),
+                Value<String?> passwordHash = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => ConversationsCompanion(
                 id: id,
                 title: title,
+                isPrivate: isPrivate,
+                passwordHash: passwordHash,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,
@@ -2271,12 +2414,16 @@ class $$ConversationsTableTableManager
               ({
                 required String id,
                 required String title,
+                Value<bool> isPrivate = const Value.absent(),
+                Value<String?> passwordHash = const Value.absent(),
                 required DateTime createdAt,
                 required DateTime updatedAt,
                 Value<int> rowid = const Value.absent(),
               }) => ConversationsCompanion.insert(
                 id: id,
                 title: title,
+                isPrivate: isPrivate,
+                passwordHash: passwordHash,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
                 rowid: rowid,

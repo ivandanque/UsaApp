@@ -23,6 +23,8 @@ class ChatRooms extends Table {
 class Conversations extends Table {
   TextColumn get id => text()();
   TextColumn get title => text()();
+  BoolColumn get isPrivate => boolean().withDefault(const Constant(false))();
+  TextColumn get passwordHash => text().nullable()();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 
