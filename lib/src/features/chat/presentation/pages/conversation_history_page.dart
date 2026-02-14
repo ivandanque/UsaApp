@@ -131,126 +131,129 @@ class _ConversationHistoryPageState extends State<ConversationHistoryPage> {
 
     return Scaffold(
       appBar: AppBar(title: Text(conversationTitle)),
-      body: AnimatedBuilder(
-        animation: _chatController,
-        builder: (context, _) {
-          final messages = _chatController.messages;
-          final loaded = _chatController.hasLoadedInitial;
-          _logger.info(
-            '[ConversationHistoryPage] controller=${_chatController.hashCode} messages=${messages.length} ids=${messages.map((m) => m.id).toList()} convo=${_currentConversation?.id}',
-          );
-
-          if (!loaded) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 12),
-                    Text('Loading messages...'),
-                  ],
-                ),
-              ),
+      body: SafeArea(
+        top: false,
+        child: AnimatedBuilder(
+          animation: _chatController,
+          builder: (context, _) {
+            final messages = _chatController.messages;
+            final loaded = _chatController.hasLoadedInitial;
+            _logger.info(
+              '[ConversationHistoryPage] controller=${_chatController.hashCode} messages=${messages.length} ids=${messages.map((m) => m.id).toList()} convo=${_currentConversation?.id}',
             );
-          }
 
-          if (messages.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  'No messages have been recorded for this chat yet.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-
-          return ListView.builder(
-            controller: _scrollController,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            itemCount: messages.length,
-            itemBuilder: (context, index) {
-              final message = messages[index];
-              final alignment = message.isLocal
-                  ? Alignment.centerRight
-                  : Alignment.centerLeft;
-              final theme = Theme.of(context);
-              final scheme = theme.colorScheme;
-              final backgroundColor = message.isLocal
-                  ? scheme.primaryContainer
-                  : scheme.surfaceContainerHighest;
-              final textColor = message.isLocal
-                  ? scheme.onPrimaryContainer
-                  : scheme.onSurfaceVariant;
-
-              return Align(
-                alignment: alignment,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Profile avatar
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8.0, top: 4.0),
-                      child: ProfileAvatar(
-                        identity: message.senderIdentity,
-                        size: 28,
-                      ),
-                    ),
-                    Flexible(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(vertical: 6),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: backgroundColor,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: <Widget>[
-                            Text(
-                              message.displaySender,
-                              style: theme.textTheme.labelSmall?.copyWith(
-                                color: _scaledAlpha(textColor, 0.8),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            if (message.content.isNotEmpty)
-                              Text(
-                                message.content,
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: textColor,
-                                ),
-                              ),
-                            // Attachments (images/files)
-                            _buildAttachments(message),
-                            const SizedBox(height: 4),
-                            Align(
-                              alignment: Alignment.centerRight,
-                              child: Text(
-                                message.sentAtFormatted,
-                                style: theme.textTheme.labelSmall?.copyWith(
-                                  color: _scaledAlpha(textColor, 0.7),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+            if (!loaded) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CircularProgressIndicator(),
+                      SizedBox(height: 12),
+                      Text('Loading messages...'),
+                    ],
+                  ),
                 ),
               );
-            },
-          );
-        },
+            }
+
+            if (messages.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    'No messages have been recorded for this chat yet.',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              );
+            }
+
+            return ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              itemCount: messages.length,
+              itemBuilder: (context, index) {
+                final message = messages[index];
+                final alignment = message.isLocal
+                    ? Alignment.centerRight
+                    : Alignment.centerLeft;
+                final theme = Theme.of(context);
+                final scheme = theme.colorScheme;
+                final backgroundColor = message.isLocal
+                    ? scheme.primaryContainer
+                    : scheme.surfaceContainerHighest;
+                final textColor = message.isLocal
+                    ? scheme.onPrimaryContainer
+                    : scheme.onSurfaceVariant;
+
+                return Align(
+                  alignment: alignment,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Profile avatar
+                      Padding(
+                        padding: const EdgeInsets.only(right: 8.0, top: 4.0),
+                        child: ProfileAvatar(
+                          identity: message.senderIdentity,
+                          size: 28,
+                        ),
+                      ),
+                      Flexible(
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: backgroundColor,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Text(
+                                message.displaySender,
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: _scaledAlpha(textColor, 0.8),
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              if (message.content.isNotEmpty)
+                                Text(
+                                  message.content,
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: textColor,
+                                  ),
+                                ),
+                              // Attachments (images/files)
+                              _buildAttachments(message),
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  message.sentAtFormatted,
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: _scaledAlpha(textColor, 0.7),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }

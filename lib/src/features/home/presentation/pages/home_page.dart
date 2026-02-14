@@ -16,44 +16,50 @@ class HomePage extends StatelessWidget {
 
     return Scaffold(
       appBar: AppBar(title: const Text('UsaApp')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: <Widget>[
-          Text('Welcome to UsaApp', style: theme.textTheme.headlineSmall),
-          const SizedBox(height: 12),
-          Text(
-            'Choose where you would like to start. You can review saved chats, tweak your settings, or jump right into conversations.',
-            style: theme.textTheme.bodyLarge,
-          ),
-          const SizedBox(height: 24),
-          _DestinationTile(
-            icon: Icons.history_toggle_off,
-            title: 'View Chats',
-            subtitle: 'Browse saved conversations, rename them, or clear logs.',
-            onTap: () =>
-                Navigator.of(context).pushNamed(ChatsHistoryPage.routeName),
-          ),
-          _DestinationTile(
-            icon: Icons.message_outlined,
-            title: 'Conversations',
-            subtitle: 'Continue chatting with your current peers.',
-            onTap: () =>
-                Navigator.of(context).pushNamed(ConversationModePage.routeName),
-          ),
-          _DestinationTile(
-            icon: Icons.person_outlined,
-            title: 'Profile',
-            subtitle: 'Edit your name, profile image, group, and role.',
-            onTap: () => Navigator.of(context).pushNamed(ProfilePage.routeName),
-          ),
-          _DestinationTile(
-            icon: Icons.settings_outlined,
-            title: 'Settings',
-            subtitle: 'Adjust P2P permissions and services.',
-            onTap: () =>
-                Navigator.of(context).pushNamed(SettingsPage.routeName),
-          ),
-        ],
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: <Widget>[
+            Text('Welcome to UsaApp', style: theme.textTheme.headlineSmall),
+            const SizedBox(height: 12),
+            Text(
+              'Choose where you would like to start. You can review saved chats, tweak your settings, or jump right into conversations.',
+              style: theme.textTheme.bodyLarge,
+            ),
+            const SizedBox(height: 24),
+            _DestinationTile(
+              icon: Icons.history_toggle_off,
+              title: 'View Chats',
+              subtitle:
+                  'Browse saved conversations, rename them, or clear logs.',
+              onTap: () =>
+                  Navigator.of(context).pushNamed(ChatsHistoryPage.routeName),
+            ),
+            _DestinationTile(
+              icon: Icons.message_outlined,
+              title: 'Conversations',
+              subtitle: 'Continue chatting with your current peers.',
+              onTap: () => Navigator.of(
+                context,
+              ).pushNamed(ConversationModePage.routeName),
+            ),
+            _DestinationTile(
+              icon: Icons.person_outlined,
+              title: 'Profile',
+              subtitle: 'Edit your name, profile image, group, and role.',
+              onTap: () =>
+                  Navigator.of(context).pushNamed(ProfilePage.routeName),
+            ),
+            _DestinationTile(
+              icon: Icons.settings_outlined,
+              title: 'Settings',
+              subtitle: 'Adjust P2P permissions and services.',
+              onTap: () =>
+                  Navigator.of(context).pushNamed(SettingsPage.routeName),
+            ),
+          ],
+        ),
       ),
     );
   }

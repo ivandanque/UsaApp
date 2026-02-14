@@ -98,54 +98,57 @@ class _ChatsHistoryPageState extends State<ChatsHistoryPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Saved Chats')),
-      body: StreamBuilder<List<Conversation>>(
-        stream: _conversationsStream,
-        initialData: const <Conversation>[],
-        builder: (context, snapshot) {
-          final conversations = snapshot.data ?? const <Conversation>[];
-          if (conversations.isEmpty) {
-            return const Center(
-              child: Padding(
-                padding: EdgeInsets.symmetric(horizontal: 32),
-                child: Text(
-                  'You have not saved any chats yet. Start a conversation, and it will appear here for easy access.',
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-
-          return ListView.separated(
-            padding: const EdgeInsets.all(16),
-            itemCount: conversations.length,
-            separatorBuilder: (context, index) => const SizedBox(height: 8),
-            itemBuilder: (context, index) {
-              final conversation = conversations[index];
-              return Card(
-                child: ListTile(
-                  leading: const Icon(Icons.chat_bubble_outline),
-                  title: Text(conversation.title),
-                  subtitle: Text(_relativeTime(conversation.updatedAt)),
-                  onTap: () => _openConversation(conversation),
-                  trailing: PopupMenuButton<_ConversationMenuAction>(
-                    onSelected: (action) =>
-                        _handleConversationAction(action, conversation),
-                    itemBuilder: (_) => const [
-                      PopupMenuItem(
-                        value: _ConversationMenuAction.rename,
-                        child: Text('Rename'),
-                      ),
-                      PopupMenuItem(
-                        value: _ConversationMenuAction.delete,
-                        child: Text('Delete'),
-                      ),
-                    ],
+      body: SafeArea(
+        top: false,
+        child: StreamBuilder<List<Conversation>>(
+          stream: _conversationsStream,
+          initialData: const <Conversation>[],
+          builder: (context, snapshot) {
+            final conversations = snapshot.data ?? const <Conversation>[];
+            if (conversations.isEmpty) {
+              return const Center(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 32),
+                  child: Text(
+                    'You have not saved any chats yet. Start a conversation, and it will appear here for easy access.',
+                    textAlign: TextAlign.center,
                   ),
                 ),
               );
-            },
-          );
-        },
+            }
+
+            return ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: conversations.length,
+              separatorBuilder: (context, index) => const SizedBox(height: 8),
+              itemBuilder: (context, index) {
+                final conversation = conversations[index];
+                return Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.chat_bubble_outline),
+                    title: Text(conversation.title),
+                    subtitle: Text(_relativeTime(conversation.updatedAt)),
+                    onTap: () => _openConversation(conversation),
+                    trailing: PopupMenuButton<_ConversationMenuAction>(
+                      onSelected: (action) =>
+                          _handleConversationAction(action, conversation),
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: _ConversationMenuAction.rename,
+                          child: Text('Rename'),
+                        ),
+                        PopupMenuItem(
+                          value: _ConversationMenuAction.delete,
+                          child: Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            );
+          },
+        ),
       ),
     );
   }
