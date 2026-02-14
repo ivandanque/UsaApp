@@ -11,6 +11,8 @@ import 'package:flutter_p2p_connection/flutter_p2p_connection.dart' as p2p_pkg;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 
+import '../../../chat/data/datasources/drift_chat_message_data_source.dart';
+import '../../../chat/data/models/chat_message_model.dart';
 import '../../../chat/domain/entities/chat_message_payload.dart';
 import '../../../chat/domain/entities/conversation.dart';
 import '../../../chat/data/datasources/drift_conversation_data_source.dart';
@@ -19,17 +21,20 @@ import '../../data/services/latency_probe_service.dart';
 
 const String _conversationAnnouncementPrefix = '__usaapp_conversation__:';
 const String _conversationRequestMessage = '__usaapp_request_conversation__';
+const String _historyMessagePrefix = '__usaapp_history_msg__:';
 
 class P2pSessionController extends ChangeNotifier {
   P2pSessionController({
     required P2pService p2pService,
     DriftConversationDataSource? conversationStore,
+    DriftChatMessageDataSource? messageStore,
     LatencyProbeService? latencyProbeService,
     NotificationService? notificationService,
     bool Function()? backgroundScanningEnabled,
     int Function()? scanCadenceSeconds,
   }) : _p2pService = p2pService,
        _conversationStore = conversationStore,
+       _messageStore = messageStore,
        _latencyProbeService = latencyProbeService,
        _notificationService =
            notificationService ?? AppDependencies.instance.notificationService,
@@ -42,6 +47,7 @@ class P2pSessionController extends ChangeNotifier {
 
   final P2pService _p2pService;
   final DriftConversationDataSource? _conversationStore;
+  final DriftChatMessageDataSource? _messageStore;
   final LatencyProbeService? _latencyProbeService;
   final NotificationService _notificationService;
   final bool Function() _backgroundScanningEnabled;
@@ -67,7 +73,7 @@ class P2pSessionController extends ChangeNotifier {
   StreamSubscription<HotspotHostState>? _hostStateSubscription;
   StreamSubscription<HotspotClientState>? _clientStateSubscription;
   StreamSubscription<List<BleDiscoveredDevice>>? _scanSubscription;
-  StreamSubscription<String>? _hostTextSubscription;
+  StreamSubscription<({String senderId, String text})>? _hostTextSubscription;
   StreamSubscription<String>? _clientTextSubscription;
 
   final List<BleDiscoveredDevice> _discoveredDevices = <BleDiscoveredDevice>[];
@@ -561,8 +567,8 @@ class P2pSessionController extends ChangeNotifier {
     }, onError: (Object error) => _setError('Host state stream error: $error'));
 
     _hostTextSubscription?.cancel();
-    _hostTextSubscription = host.streamReceivedTexts().listen(
-      _handleIncomingText,
+    _hostTextSubscription = host.streamReceivedMessages().listen(
+      (msg) => _handleIncomingText(msg.text, senderId: msg.senderId),
       onError: (Object error) {
         _setError('Host text stream error: $error');
       },
@@ -586,7 +592,7 @@ class P2pSessionController extends ChangeNotifier {
     );
   }
 
-  void _handleIncomingText(String raw) {
+  void _handleIncomingText(String raw, {String? senderId}) {
     final trimmed = raw.trim();
     if (trimmed.isEmpty) {
       return;
@@ -608,11 +614,21 @@ class P2pSessionController extends ChangeNotifier {
       return;
     }
 
+    // Handle incoming history sync messages (client-side).
+    if (trimmed.startsWith(_historyMessagePrefix)) {
+      _handleHistoryMessage(trimmed.substring(_historyMessagePrefix.length));
+      return;
+    }
+
     if (trimmed == _conversationRequestMessage) {
       if (_role == P2pSessionRole.host) {
         _pendingConversationAnnouncement = true;
         if (isHostingActive) {
           unawaited(_announceActiveConversation());
+          // Send chat history to the requesting client so they catch up.
+          if (senderId != null) {
+            unawaited(_sendHistoryToClient(senderId));
+          }
         }
       }
       return;
@@ -801,6 +817,168 @@ class P2pSessionController extends ChangeNotifier {
     } catch (e) {
       _setError('Unable to share file: $e');
       return null;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HISTORY SYNC
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Send the host's stored chat history to a specific client so they can
+  /// catch up on messages they missed.
+  Future<void> _sendHistoryToClient(String clientId) async {
+    final store = _messageStore;
+    final conversationId = _activeConversationId;
+    if (store == null || conversationId == null) {
+      return;
+    }
+    if (_role != P2pSessionRole.host) {
+      return;
+    }
+
+    try {
+      final host = await _p2pService.ensureHostInitialized();
+      // Fetch all messages for the active conversation.
+      final messages = await store.getMessagesBefore(
+        conversationId,
+        DateTime.utc(2100),
+        limit: 10000,
+      );
+      if (messages.isEmpty) {
+        return;
+      }
+
+      // Send oldest-first so the client's DB gets chronological inserts.
+      final sorted = messages.reversed.toList();
+      final conversationTitle =
+          _activeConversationTitle ?? 'Conversation';
+
+      for (var i = 0; i < sorted.length; i++) {
+        final msg = sorted[i];
+
+        // For attachments the host has downloaded locally, re-register
+        // the file with the host's HTTP server so the new joiner can
+        // download it via the host's own IP/port.
+        List<Map<String, dynamic>>? filesList;
+        if (msg.attachments.isNotEmpty) {
+          filesList = <Map<String, dynamic>>[];
+          for (final att in msg.attachments) {
+            final json = att.toJson();
+            // If the host has a local copy, register it and rewrite
+            // senderHostIp/senderPort to point to the host's file server.
+            if (att.uri.isNotEmpty && att.uri.startsWith('/')) {
+              final localFile = File(att.uri);
+              if (localFile.existsSync()) {
+                final info = host.registerHostedFile(
+                  fileId: att.id,
+                  fileName: att.filename,
+                  localPath: att.uri,
+                  fileSize: att.sizeBytes,
+                );
+                if (info != null) {
+                  json['senderHostIp'] = info.senderHostIp;
+                  json['senderPort'] = info.senderPort;
+                  // Clear local URI so the client knows to download.
+                  json['uri'] = '';
+                }
+              }
+            }
+            filesList.add(json);
+          }
+        }
+
+        final payload = ChatMessagePayload(
+          id: msg.id,
+          conversationId: msg.conversationId,
+          conversationTitle: conversationTitle,
+          senderId: msg.senderId,
+          senderName: msg.sender,
+          content: msg.content,
+          sentAt: msg.sentAt,
+          files: filesList,
+        );
+        final wire = '$_historyMessagePrefix${payload.encode()}';
+        try {
+          await host.sendTextToClient(wire, clientId);
+        } catch (e) {
+          debugPrint('History sync send failed for msg ${msg.id}: $e');
+          break; // Client likely disconnected.
+        }
+        // Yield every 20 messages to avoid flooding the socket.
+        if (i > 0 && i % 20 == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+      debugPrint(
+        'History sync: sent ${sorted.length} message(s) to client $clientId',
+      );
+    } catch (e) {
+      debugPrint('History sync failed: $e');
+    }
+  }
+
+  /// Handle an incoming history sync message on the client side.
+  /// Parses the payload and saves it directly to the local DB so the
+  /// reactive watch stream updates the UI.  Deduplicates by message ID
+  /// first, then by senderId + sentAt to handle the case where the
+  /// sender's local ID differs from the host's stored ID.
+  void _handleHistoryMessage(String payloadRaw) {
+    final payload = ChatMessagePayload.tryParse(payloadRaw);
+    if (payload == null) {
+      return;
+    }
+
+    final store = _messageStore;
+    if (store == null) {
+      // Fallback: push to the normal incoming stream so the ChatPage can
+      // handle it (though receiveMessage will skip own messages).
+      if (!_incomingMessagesController.isClosed) {
+        _incomingMessagesController.add(payload);
+      }
+      return;
+    }
+
+    final chatMsg = payload.toChatMessage();
+    final model = ChatMessageModel.fromEntity(chatMsg);
+    unawaited(_deduplicateAndSave(store, model));
+  }
+
+  /// Check for an existing message (by ID or senderId+sentAt) before saving.
+  /// If a duplicate is found, skip the save to avoid duplicates in the UI.
+  Future<void> _deduplicateAndSave(
+    DriftChatMessageDataSource store,
+    ChatMessageModel model,
+  ) async {
+    try {
+      // Fast path: exact ID match means upsert is safe (same message).
+      // But we still want to avoid overwriting a version that already has
+      // downloaded attachment URIs with a version that has empty URIs,
+      // so skip if the ID already exists.
+      final existing = await store.getMessagesBefore(
+        model.conversationId,
+        model.sentAt.add(const Duration(seconds: 1)),
+        limit: 200,
+      );
+      for (final e in existing) {
+        if (e.id == model.id) {
+          debugPrint('History dedup: skipping msg ${model.id} (exact ID match)');
+          return;
+        }
+        // Content-based dedup: same sender + same timestamp (within 1s).
+        if (e.senderId == model.senderId &&
+            e.sentAt.difference(model.sentAt).abs() <
+                const Duration(seconds: 1)) {
+          debugPrint(
+            'History dedup: skipping msg ${model.id} (sender+time match '
+            'with existing ${e.id})',
+          );
+          return;
+        }
+      }
+
+      await store.saveMessage(model.conversationId, model);
+    } catch (e) {
+      debugPrint('History sync save failed for msg ${model.id}: $e');
     }
   }
 

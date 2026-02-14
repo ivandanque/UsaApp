@@ -268,6 +268,7 @@ void main() {
         ConversationEntry(
           id: 'conv-1',
           title: 'Test',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now,
         ),
@@ -289,6 +290,7 @@ void main() {
         ConversationEntry(
           id: 'conv-1',
           title: 'First',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now,
         ),
@@ -300,6 +302,7 @@ void main() {
         ConversationEntry(
           id: 'conv-2',
           title: 'Second',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now.add(const Duration(seconds: 1)),
         ),
@@ -321,6 +324,7 @@ void main() {
         ConversationEntry(
           id: 'conv-1',
           title: 'Test',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now,
         ),
@@ -350,6 +354,7 @@ void main() {
         ConversationEntry(
           id: 'conv-1',
           title: 'Test',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now,
         ),
@@ -392,6 +397,7 @@ void main() {
         ConversationEntry(
           id: 'conv-1',
           title: 'Test',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now,
         ),
@@ -455,6 +461,7 @@ void main() {
         ConversationEntry(
           id: 'conv-1',
           title: 'Test',
+          isPrivate: false,
           createdAt: now,
           updatedAt: now,
         ),

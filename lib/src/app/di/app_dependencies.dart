@@ -201,6 +201,7 @@ class AppDependencies {
     return P2pSessionController(
       p2pService: _p2pService,
       conversationStore: _driftConversationDataSource,
+      messageStore: _driftChatMessageDataSource,
       latencyProbeService: _latencyProbeService,
     );
   }

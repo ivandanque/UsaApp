@@ -211,6 +211,26 @@ class AppDatabase extends _$AppDatabase {
     return result.read(countExp) ?? 0;
   }
 
+  /// Check whether a message with the given senderId and sentAt already exists
+  /// in the conversation. Used for deduplication when message IDs differ
+  /// between sender and host.
+  Future<bool> messageExistsBySenderAt({
+    required String conversationId,
+    required String senderId,
+    required DateTime sentAt,
+  }) async {
+    final query = select(chatMessages)
+      ..where(
+        (t) =>
+            t.conversationId.equals(conversationId) &
+            t.senderId.equals(senderId) &
+            t.sentAt.equals(sentAt),
+      )
+      ..limit(1);
+    final result = await query.getSingleOrNull();
+    return result != null;
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // SYNC METADATA
   // ─────────────────────────────────────────────────────────────────────────

@@ -66,6 +66,9 @@ class ChatController extends ChangeNotifier {
   // Keep original P2P file info for pending downloads keyed by file id
   final Map<String, Map<String, dynamic>> _pendingFileInfos =
       <String, Map<String, dynamic>>{};
+  // Attachments already queued for download (avoid re-triggering on every
+  // DB watch emission).
+  final Set<String> _downloadingAttachmentIds = <String>{};
 
   List<ChatMessageViewModel> get messages =>
       List<ChatMessageViewModel>.unmodifiable(_messages);
@@ -166,6 +169,12 @@ class ChatController extends ChangeNotifier {
             }),
           );
           notifyListeners();
+
+          // Auto-download any attachments that have transport info but no
+          // local file yet (e.g. from history sync).  This runs on every
+          // DB watch emission but _downloadingAttachmentIds prevents
+          // duplicate download attempts.
+          _checkPendingAttachmentDownloads();
         }, onError: (Object error, StackTrace? stack) {
           const logTag = 'ChatController';
           final logger = const Logger(logTag);
@@ -173,6 +182,30 @@ class ChatController extends ChangeNotifier {
             '[ChatController:$hashCode] stream error for convo ${_conversation.id}: $error',
           );
         });
+  }
+
+  /// Scan loaded messages for undownloaded attachments that have transport
+  /// info (senderHostIp + senderPort) and trigger downloads.  This covers
+  /// history-synced messages whose download events were emitted before
+  /// ChatPage subscribed to the incoming-messages broadcast stream.
+  void _checkPendingAttachmentDownloads() {
+    for (final vm in _messages) {
+      for (final att in vm.attachments) {
+        if (att.uri.isEmpty &&
+            att.senderHostIp != null &&
+            att.senderPort != null &&
+            !_downloadingAttachmentIds.contains(att.id) &&
+            (_downloadFailures[att.id] ?? 0) < 3) {
+          _downloadingAttachmentIds.add(att.id);
+          _pendingFileInfos[att.id] = att.toJson();
+          debugPrint(
+            'ChatController: Auto-downloading history attachment '
+            '${att.filename} from http://${att.senderHostIp}:${att.senderPort}/file?id=${att.id}',
+          );
+          unawaited(_attemptDownloadForAttachment(vm.id, att));
+        }
+      }
+    }
   }
 
   Future<ChatMessage?> sendLocalMessage(String rawContent) async {

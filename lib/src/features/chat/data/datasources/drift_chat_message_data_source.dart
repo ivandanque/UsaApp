@@ -119,6 +119,20 @@ class DriftChatMessageDataSource {
     return _db.getMessageCount(conversationId);
   }
 
+  /// Check whether a message with the given senderId and sentAt already exists.
+  /// Used by history sync to avoid inserting duplicates when IDs differ.
+  Future<bool> messageExistsBySenderAt({
+    required String conversationId,
+    required String senderId,
+    required DateTime sentAt,
+  }) {
+    return _db.messageExistsBySenderAt(
+      conversationId: conversationId,
+      senderId: senderId,
+      sentAt: sentAt,
+    );
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // CONVERTERS
   // ─────────────────────────────────────────────────────────────────────────

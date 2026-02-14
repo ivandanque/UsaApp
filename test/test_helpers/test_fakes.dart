@@ -30,9 +30,17 @@ class FakeP2pSessionController extends P2pSessionController {
   Stream<ChatMessagePayload> get incomingMessages => _incoming.stream;
 
   @override
-  void setActiveConversation(Conversation conversation) {
+  void setActiveConversation(
+    Conversation conversation, {
+    bool isPrivate = false,
+    String? passwordHash,
+  }) {
     // Keep behavior minimal for tests but still record active convo via base impl.
-    super.setActiveConversation(conversation);
+    super.setActiveConversation(
+      conversation,
+      isPrivate: isPrivate,
+      passwordHash: passwordHash,
+    );
   }
 
   void addIncoming(ChatMessagePayload payload) {
@@ -63,12 +71,18 @@ class FakeConversationStore {
     return buffer.toString();
   }
 
-  Future<Conversation> createConversation(String title) async {
+  Future<Conversation> createConversation(
+    String title, {
+    bool isPrivate = false,
+    String? passwordHash,
+  }) async {
     final id = _generateId();
     final now = DateTime.now().toUtc();
     final conv = Conversation(
       id: id,
       title: title.trim().isEmpty ? 'Conversation' : title.trim(),
+      isPrivate: isPrivate,
+      passwordHash: passwordHash,
       createdAt: now,
       updatedAt: now,
     );
@@ -79,14 +93,22 @@ class FakeConversationStore {
   Future<Conversation> ensureConversationExists({
     required String id,
     required String title,
+    bool? isPrivate,
+    String? passwordHash,
   }) async {
     final existing = _store[id];
     final now = DateTime.now().toUtc();
     if (existing != null) {
-      if (title.trim().isNotEmpty && existing.title != title.trim()) {
+      final needsUpdate =
+          (title.trim().isNotEmpty && existing.title != title.trim()) ||
+          (isPrivate != null && existing.isPrivate != isPrivate) ||
+          (passwordHash != null && existing.passwordHash != passwordHash);
+      if (needsUpdate) {
         final updated = Conversation(
           id: existing.id,
-          title: title.trim(),
+          title: title.trim().isNotEmpty ? title.trim() : existing.title,
+          isPrivate: isPrivate ?? existing.isPrivate,
+          passwordHash: passwordHash ?? existing.passwordHash,
           createdAt: existing.createdAt,
           updatedAt: now,
         );
@@ -98,6 +120,8 @@ class FakeConversationStore {
     final newConversation = Conversation(
       id: id,
       title: title.trim().isEmpty ? 'Conversation' : title.trim(),
+      isPrivate: isPrivate ?? false,
+      passwordHash: passwordHash,
       createdAt: now,
       updatedAt: now,
     );
