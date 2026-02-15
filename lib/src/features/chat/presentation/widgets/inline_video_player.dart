@@ -307,15 +307,15 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
                       ),
                     ),
 
-                    // Overlay controls (shown on tap)
+                    // Overlay controls (shown on tap) - only darken the bottom section
                     if (_showControls)
-                      Positioned.fill(
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
                         child: Container(
                           color: Colors.black.withOpacity(0.5),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [_buildControls(vc, duration, position)],
-                          ),
+                          child: _buildControls(vc, duration, position),
                         ),
                       ),
                   ],
@@ -324,22 +324,25 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
             );
           }
 
-          // ── Portrait: video at top, controls right below ──
+          // ── Portrait: video + controls centered as a group ──
           return SafeArea(
-            child: Column(
-              children: [
-                // Video centered in available space
-                AspectRatio(
-                  aspectRatio: aspect,
-                  child: Container(color: Colors.black, child: VideoPlayer(vc)),
-                ),
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Video
+                  AspectRatio(
+                    aspectRatio: aspect,
+                    child: Container(
+                      color: Colors.black,
+                      child: VideoPlayer(vc),
+                    ),
+                  ),
 
-                // Controls immediately below video
-                _buildControls(vc, duration, position),
-
-                // Spacer to push everything up
-                const Spacer(),
-              ],
+                  // Controls immediately below video
+                  _buildControls(vc, duration, position),
+                ],
+              ),
             ),
           );
         },
