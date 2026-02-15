@@ -37,6 +37,12 @@ class FakeNotificationService implements NotificationService {
 
   @override
   Future<void> requestPermissionIfNeeded() async {}
+
+  @override
+  Future<void> showScanningNotification() async {}
+
+  @override
+  Future<void> cancelScanningNotification() async {}
 }
 
 class FakeClient implements p2p_pkg.FlutterP2pClient {
@@ -133,8 +139,8 @@ void main() {
     final fakeNotif = FakeNotificationService();
     final fakeP2p = FakeP2pService();
     final controller = P2pSessionController(
-      p2pService: fakeP2p as dynamic,
-      notificationService: fakeNotif as dynamic,
+      p2pService: fakeP2p,
+      notificationService: fakeNotif,
       backgroundScanningEnabled: () => true,
       scanCadenceSeconds: () => 1,
     );
@@ -168,8 +174,8 @@ void main() {
     final fakeNotif = FakeNotificationService();
     final fakeP2p = FakeP2pService();
     final controller = P2pSessionController(
-      p2pService: fakeP2p as dynamic,
-      notificationService: fakeNotif as dynamic,
+      p2pService: fakeP2p,
+      notificationService: fakeNotif,
       backgroundScanningEnabled: () => false,
       scanCadenceSeconds: () => 5,
     );
