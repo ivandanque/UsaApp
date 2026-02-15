@@ -11,8 +11,9 @@ void main() {
     await AppDependencies.instance.initForTestsMinimal();
   });
 
-  testWidgets('toggling background scanning persists and updates cadence',
-      (tester) async {
+  testWidgets('toggling background scanning persists and updates cadence', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: SettingsPage()));
     await tester.pumpAndSettle();
 
@@ -21,7 +22,10 @@ void main() {
     expect(initial, isFalse);
 
     // Toggle the switch on
-    final switchFinder = find.widgetWithText(SwitchListTile, 'Background scanning');
+    final switchFinder = find.widgetWithText(
+      SwitchListTile,
+      'Background scanning',
+    );
     expect(switchFinder, findsOneWidget);
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();
@@ -38,7 +42,10 @@ void main() {
     await tester.tap(addButton);
     await tester.pumpAndSettle();
 
-    expect(AppDependencies.instance.scanCadenceSeconds, equals(beforeCadence + 1));
+    expect(
+      AppDependencies.instance.scanCadenceSeconds,
+      equals(beforeCadence + 1),
+    );
 
     // Tap remove to decrement cadence
     final removeButton = find.widgetWithIcon(IconButton, Icons.remove);

@@ -672,7 +672,10 @@ class P2pSessionController extends ChangeNotifier {
           final info = clientMap[id];
           // Prefer the mapping we built from chat messages; fall back to
           // the transport-level username; last resort the knownPeers map.
-          final name = _resolveDisplayNameForTransport(id, fallbackUsername: info?.username);
+          final name = _resolveDisplayNameForTransport(
+            id,
+            fallbackUsername: info?.username,
+          );
           final profileImage = _resolveProfileImageForTransport(id);
           // Record the username so that if this peer leaves before sending
           // a chat message, we still show something sensible.
@@ -1037,8 +1040,7 @@ class P2pSessionController extends ChangeNotifier {
 
       // Send oldest-first so the client's DB gets chronological inserts.
       final sorted = messages.reversed.toList();
-      final conversationTitle =
-          _activeConversationTitle ?? 'Conversation';
+      final conversationTitle = _activeConversationTitle ?? 'Conversation';
 
       for (var i = 0; i < sorted.length; i++) {
         final msg = sorted[i];
@@ -1148,7 +1150,9 @@ class P2pSessionController extends ChangeNotifier {
       );
       for (final e in existing) {
         if (e.id == model.id) {
-          debugPrint('History dedup: skipping msg ${model.id} (exact ID match)');
+          debugPrint(
+            'History dedup: skipping msg ${model.id} (exact ID match)',
+          );
           return;
         }
         // Content-based dedup: same sender + same timestamp (within 1s).

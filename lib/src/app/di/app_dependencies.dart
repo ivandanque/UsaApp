@@ -72,9 +72,9 @@ class AppDependencies {
   Future<void> init({QueryExecutor? executor}) async {
     _logger.info('Initializing dependencies');
 
-      final sharedPreferences = await SharedPreferences.getInstance();
-      _sharedPreferences = sharedPreferences;
-      _timeFormat = TimeFormatService.getPreferenceSync(sharedPreferences);
+    final sharedPreferences = await SharedPreferences.getInstance();
+    _sharedPreferences = sharedPreferences;
+    _timeFormat = TimeFormatService.getPreferenceSync(sharedPreferences);
 
     // Initialize database (use provided executor for tests, or default)
     if (executor != null) {
@@ -109,14 +109,14 @@ class AppDependencies {
     _sendMessage = SendMessage(_chatRepository);
     _watchMessages = WatchMessages(_chatRepository);
 
-    // Prepare P2P service (lazy initialization happens on demand)
-    _p2pService = P2pService();
-
     _peerIdentityService = PeerIdentityService();
     _peerIdentity = await _peerIdentityService.getIdentity();
     _knownPeers = Map<String, PeerIdentity>.from(
       await _peerIdentityService.getKnownPeers(),
     );
+
+    // Prepare P2P service (lazy initialization happens on demand)
+    _p2pService = P2pService(displayName: _peerIdentity.displayName);
 
     // Conversations are stored in SQLite via Drift; no SharedPreferences store.
 
@@ -141,7 +141,7 @@ class AppDependencies {
     );
 
     // Minimal services that do not start platform plugins eagerly
-    _p2pService = P2pService();
+    _p2pService = P2pService(displayName: _peerIdentity.displayName);
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
     _sharedPreferences = await SharedPreferences.getInstance();
     _timeFormat = TimeFormatService.getPreferenceSync(_sharedPreferences);
@@ -178,18 +178,20 @@ class AppDependencies {
 
   P2pService get p2pService => _p2pService;
   PeerIdentityService get peerIdentityService => _peerIdentityService;
-    LatencyProbeService get latencyProbeService => _latencyProbeService;
-    NotificationService get notificationService {
-      _notificationService ??= NotificationService(
-        plugin: FlutterLocalNotificationsPlugin(),
-      );
-      return _notificationService!;
-    }
-    bool get backgroundScanningEnabled =>
+  LatencyProbeService get latencyProbeService => _latencyProbeService;
+  NotificationService get notificationService {
+    _notificationService ??= NotificationService(
+      plugin: FlutterLocalNotificationsPlugin(),
+    );
+    return _notificationService!;
+  }
+
+  bool get backgroundScanningEnabled =>
       _sharedPreferences.getBool(_prefBackgroundScanningEnabled) ?? false;
-    int get scanCadenceSeconds =>
-      _sharedPreferences.getInt(_prefScanCadenceSeconds) ?? _defaultScanCadenceSeconds;
-    bool get vibrationEnabled =>
+  int get scanCadenceSeconds =>
+      _sharedPreferences.getInt(_prefScanCadenceSeconds) ??
+      _defaultScanCadenceSeconds;
+  bool get vibrationEnabled =>
       _sharedPreferences.getBool(_prefVibrationEnabled) ?? true;
 
   /// The user's preferred time display format (12h / 24h).
@@ -273,24 +275,15 @@ class AppDependencies {
   }
 
   Future<void> setBackgroundScanningEnabled(bool enabled) async {
-    await _sharedPreferences.setBool(
-      _prefBackgroundScanningEnabled,
-      enabled,
-    );
+    await _sharedPreferences.setBool(_prefBackgroundScanningEnabled, enabled);
   }
 
   Future<void> setScanCadenceSeconds(int seconds) async {
-    await _sharedPreferences.setInt(
-      _prefScanCadenceSeconds,
-      seconds,
-    );
+    await _sharedPreferences.setInt(_prefScanCadenceSeconds, seconds);
   }
 
   Future<void> setVibrationEnabled(bool enabled) async {
-    await _sharedPreferences.setBool(
-      _prefVibrationEnabled,
-      enabled,
-    );
+    await _sharedPreferences.setBool(_prefVibrationEnabled, enabled);
     // Keep the notification service in sync.
     _notificationService?.vibrationEnabled = () => enabled;
   }

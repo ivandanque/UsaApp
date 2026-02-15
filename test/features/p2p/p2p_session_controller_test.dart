@@ -48,20 +48,26 @@ class FakeNotificationService implements NotificationService {
   Future<void> cancelScanningNotification() async {}
 
   @override
-  Future<void> notifyPeerJoined(String displayName,
-      {String? profileImageBase64}) async {
+  Future<void> notifyPeerJoined(
+    String displayName, {
+    String? profileImageBase64,
+  }) async {
     peerJoinedCalls.add(displayName);
   }
 
   @override
-  Future<void> notifyPeerLeft(String displayName,
-      {String? profileImageBase64}) async {
+  Future<void> notifyPeerLeft(
+    String displayName, {
+    String? profileImageBase64,
+  }) async {
     peerLeftCalls.add(displayName);
   }
 
   @override
-  Future<void> notifyPeerRejoined(String displayName,
-      {String? profileImageBase64}) async {
+  Future<void> notifyPeerRejoined(
+    String displayName, {
+    String? profileImageBase64,
+  }) async {
     peerRejoinedCalls.add(displayName);
   }
 
@@ -104,8 +110,10 @@ class FakeClient implements p2p_pkg.FlutterP2pClient {
   }
 
   @override
-  Future<void> connectWithDevice(p2p_pkg.BleDiscoveredDevice device,
-      {Duration? timeout}) async {}
+  Future<void> connectWithDevice(
+    p2p_pkg.BleDiscoveredDevice device, {
+    Duration? timeout,
+  }) async {}
 
   @override
   Future<void> disconnect() async {}

@@ -10,8 +10,11 @@ enum P2pSessionRole { host, client }
 
 /// Service responsible for managing P2P connection setup, permissions, and services.
 class P2pService {
-  P2pService() : _logger = const Logger('P2pService');
+  P2pService({String? displayName})
+    : _displayName = displayName,
+      _logger = const Logger('P2pService');
 
+  final String? _displayName;
   final Logger _logger;
 
   FlutterP2pHost? _hostInterface;
@@ -147,7 +150,12 @@ class P2pService {
     }
 
     final allGranted =
-        storage && p2p && bluetooth && locationGranted && nearbyGranted && notificationGranted;
+        storage &&
+        p2p &&
+        bluetooth &&
+        locationGranted &&
+        nearbyGranted &&
+        notificationGranted;
 
     _logger.info(
       'Permission status for $role → storage:$storage, p2p:$p2p, '
@@ -172,7 +180,7 @@ class P2pService {
 
   /// Ensure the host interface is ready for use.
   Future<FlutterP2pHost> ensureHostInitialized() async {
-    _hostInterface ??= FlutterP2pHost();
+    _hostInterface ??= FlutterP2pHost(username: _displayName);
     if (!_hostInitialized) {
       _hostInitialized = true;
       try {
@@ -188,7 +196,7 @@ class P2pService {
 
   /// Ensure the client interface is ready for use.
   Future<FlutterP2pClient> ensureClientInitialized() async {
-    _clientInterface ??= FlutterP2pClient();
+    _clientInterface ??= FlutterP2pClient(username: _displayName);
     if (!_clientInitialized) {
       _clientInitialized = true;
       try {

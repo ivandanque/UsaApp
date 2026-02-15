@@ -70,9 +70,10 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
 
   @override
   Future<bool?> requestPermission() async {
-    final androidPlugin =
-        _impl.resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>();
+    final androidPlugin = _impl
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
     if (androidPlugin == null) return null;
     return androidPlugin.requestNotificationsPermission();
   }
@@ -80,11 +81,11 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
 
 class NotificationService {
   NotificationService({required FlutterLocalNotificationsPlugin plugin})
-      : _plugin = _FlutterLocalNotificationsAdapter(plugin);
+    : _plugin = _FlutterLocalNotificationsAdapter(plugin);
 
   /// Constructor used by tests to inject a fake `NotificationPlugin`.
   NotificationService.withPlugin({required NotificationPlugin plugin})
-      : _plugin = plugin;
+    : _plugin = plugin;
 
   static const String _roomsChannelId = 'usaapp_p2p_rooms';
   static const String _roomsChannelName = 'Nearby rooms';
@@ -111,8 +112,12 @@ class NotificationService {
 
   /// Default vibration pattern: 0ms delay, 250ms vibrate, 100ms pause,
   /// 250ms vibrate.
-  static final Int64List _vibrationPattern =
-      Int64List.fromList(<int>[0, 250, 100, 250]);
+  static final Int64List _vibrationPattern = Int64List.fromList(<int>[
+    0,
+    250,
+    100,
+    250,
+  ]);
 
   final NotificationPlugin _plugin;
   GlobalKey<NavigatorState>? _navigatorKey;
@@ -189,9 +194,7 @@ class NotificationService {
     await _plugin.show(
       id: _roomsNotificationId,
       title: title,
-      body: body.isNotEmpty
-          ? body
-          : 'Tap to open the chat discovery screen.',
+      body: body.isNotEmpty ? body : 'Tap to open the chat discovery screen.',
       notificationDetails: NotificationDetails(
         android: AndroidNotificationDetails(
           _roomsChannelId,

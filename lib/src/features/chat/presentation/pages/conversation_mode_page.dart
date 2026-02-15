@@ -993,8 +993,7 @@ class _ClientModeSectionState extends State<_ClientModeSection> {
         const SizedBox(height: 16),
         ElevatedButton.icon(
           icon: Icon(isScanning ? Icons.pause : Icons.search),
-          label: Text(
-              isScanning ? 'Stop searching' : 'Search nearby hosts'),
+          label: Text(isScanning ? 'Stop searching' : 'Search nearby hosts'),
           onPressed: controller.isBusy
               ? null
               : () {

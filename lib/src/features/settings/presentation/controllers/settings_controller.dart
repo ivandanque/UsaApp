@@ -7,8 +7,8 @@ import '../../../p2p/data/services/p2p_service.dart';
 /// Controller for managing P2P settings and setup.
 class SettingsController extends ChangeNotifier {
   SettingsController({P2pService? p2pService})
-      : _logger = const Logger('SettingsController'),
-        _p2pService = p2pService ?? AppDependencies.instance.p2pService;
+    : _logger = const Logger('SettingsController'),
+      _p2pService = p2pService ?? AppDependencies.instance.p2pService;
 
   final Logger _logger;
   final P2pService _p2pService;
@@ -80,7 +80,8 @@ class SettingsController extends ChangeNotifier {
       );
       _allServicesEnabled = await _p2pService.areAllServicesEnabled();
       // Load persisted scanning preferences
-      _backgroundScanningEnabled = AppDependencies.instance.backgroundScanningEnabled;
+      _backgroundScanningEnabled =
+          AppDependencies.instance.backgroundScanningEnabled;
       _scanCadenceSeconds = AppDependencies.instance.scanCadenceSeconds;
       _vibrationEnabled = AppDependencies.instance.vibrationEnabled;
       final identity = AppDependencies.instance.peerIdentity;

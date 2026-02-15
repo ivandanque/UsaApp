@@ -37,7 +37,8 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _fullNameController = TextEditingController();
   final _groupNameController = TextEditingController();
   UserRole _selectedRole = UserRole.student;
-  TimeFormatPreference _selectedTimeFormat = TimeFormatPreference.twentyFourHour;
+  TimeFormatPreference _selectedTimeFormat =
+      TimeFormatPreference.twentyFourHour;
 
   @override
   void dispose() {
@@ -362,10 +363,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
               border: OutlineInputBorder(),
             ),
             items: TimeFormatPreference.values.map((fmt) {
-              return DropdownMenuItem(
-                value: fmt,
-                child: Text(fmt.displayName),
-              );
+              return DropdownMenuItem(value: fmt, child: Text(fmt.displayName));
             }).toList(),
             onChanged: (value) {
               if (value != null) {
