@@ -32,6 +32,14 @@ jobs:
           distribution: "temurin"
           java-version: "17"
 
+      - name: Generate debug keystore
+        run: |
+          mkdir -p ~/.android
+          keytool -genkey -v -keystore ~/.android/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Android Debug, O=Android, C=US"
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -100,7 +108,7 @@ jobs:
 
             ### Installation
             Download the APK file below and install it on your Android device
-            (minimum Android 9.0 Pie required).
+            (minimum Android 8.0 Oreo required).
 
             ### Features
             - Peer-to-peer messaging for nearby devices
