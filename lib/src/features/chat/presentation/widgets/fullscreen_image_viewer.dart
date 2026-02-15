@@ -33,11 +33,8 @@ class FullscreenImageViewer extends StatefulWidget {
   }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => FullscreenImageViewer(
-          file: file,
-          heroTag: heroTag,
-          title: title,
-        ),
+        builder: (_) =>
+            FullscreenImageViewer(file: file, heroTag: heroTag, title: title),
       ),
     );
   }
@@ -76,9 +73,7 @@ class _FullscreenImageViewerState extends State<FullscreenImageViewer> {
       transformationController: _transformController,
       minScale: 0.5,
       maxScale: 5.0,
-      child: Center(
-        child: Image.file(widget.file, fit: BoxFit.contain),
-      ),
+      child: Center(child: Image.file(widget.file, fit: BoxFit.contain)),
     );
 
     final heroWrapped = widget.heroTag != null

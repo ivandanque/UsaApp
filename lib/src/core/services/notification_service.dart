@@ -184,10 +184,7 @@ class NotificationService {
     }
 
     const title = 'A host has been found';
-    final body = rooms
-        .take(4)
-        .map((room) => '${room.roomTitle} · ${room.hostName}')
-        .join('\n');
+    final body = rooms.take(4).map((room) => room.roomTitle).join('\n');
 
     final useVibration = vibrationEnabled();
 
@@ -214,7 +211,7 @@ class NotificationService {
     );
   }
 
-  Future<void> notifyConnected(String roomTitle, String hostName) async {
+  Future<void> notifyConnected(String roomTitle) async {
     if (!_initialized) {
       return;
     }
@@ -222,7 +219,7 @@ class NotificationService {
     await _plugin.show(
       id: _connectionNotificationId,
       title: 'Connected to $roomTitle',
-      body: 'Linked with $hostName via Wi‑Fi P2P',
+      body: 'Linked via Wi‑Fi P2P',
       notificationDetails: const NotificationDetails(
         android: AndroidNotificationDetails(
           _roomsChannelId,

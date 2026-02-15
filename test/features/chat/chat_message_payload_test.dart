@@ -490,28 +490,39 @@ void main() {
         expect(payload!.sentAt, equals(originalSendTime));
       });
 
-      test('falls back to DateTime.now when both sentAt and sentAtMs are missing', () {
-        final beforeTest = DateTime.now().toUtc();
-        final json = jsonEncode({
-          'v': 2,
-          'id': 'msg-1',
-          'conversationId': 'conv-1',
-          'conversationTitle': 'Test',
-          'senderId': 'user-1',
-          'senderName': 'Test User',
-          'content': 'Hello',
-          'sentAt': 'invalid',
-          // no sentAtMs field
-        });
+      test(
+        'falls back to DateTime.now when both sentAt and sentAtMs are missing',
+        () {
+          final beforeTest = DateTime.now().toUtc();
+          final json = jsonEncode({
+            'v': 2,
+            'id': 'msg-1',
+            'conversationId': 'conv-1',
+            'conversationTitle': 'Test',
+            'senderId': 'user-1',
+            'senderName': 'Test User',
+            'content': 'Hello',
+            'sentAt': 'invalid',
+            // no sentAtMs field
+          });
 
-        final payload = ChatMessagePayload.tryParse(json);
-        final afterTest = DateTime.now().toUtc();
+          final payload = ChatMessagePayload.tryParse(json);
+          final afterTest = DateTime.now().toUtc();
 
-        expect(payload, isNotNull);
-        // Should be approximately now since there's no fallback
-        expect(payload!.sentAt.isAfter(beforeTest.subtract(const Duration(seconds: 1))), isTrue);
-        expect(payload.sentAt.isBefore(afterTest.add(const Duration(seconds: 1))), isTrue);
-      });
+          expect(payload, isNotNull);
+          // Should be approximately now since there's no fallback
+          expect(
+            payload!.sentAt.isAfter(
+              beforeTest.subtract(const Duration(seconds: 1)),
+            ),
+            isTrue,
+          );
+          expect(
+            payload.sentAt.isBefore(afterTest.add(const Duration(seconds: 1))),
+            isTrue,
+          );
+        },
+      );
 
       test('parses correctly when both sentAt and sentAtMs are valid', () {
         final json = jsonEncode({
@@ -533,29 +544,32 @@ void main() {
         expect(payload!.sentAt, equals(testDateTime));
       });
 
-      test('round-trip preserves timestamp via sentAtMs when ISO is corrupted', () {
-        // Simulate the complete flow: serialize → corrupt ISO → deserialize
-        final original = ChatMessagePayload(
-          id: 'msg-rt',
-          conversationId: 'conv-1',
-          conversationTitle: 'Test',
-          senderId: 'user-1',
-          senderName: 'Test User',
-          content: 'Round trip',
-          sentAt: testDateTime,
-        );
+      test(
+        'round-trip preserves timestamp via sentAtMs when ISO is corrupted',
+        () {
+          // Simulate the complete flow: serialize → corrupt ISO → deserialize
+          final original = ChatMessagePayload(
+            id: 'msg-rt',
+            conversationId: 'conv-1',
+            conversationTitle: 'Test',
+            senderId: 'user-1',
+            senderName: 'Test User',
+            content: 'Round trip',
+            sentAt: testDateTime,
+          );
 
-        // Serialize normally (produces both sentAt and sentAtMs)
-        final jsonMap = original.toJson();
-        // Corrupt the ISO string
-        jsonMap['sentAt'] = 'NOT-A-DATE';
-        // Re-encode and parse
-        final corrupted = jsonEncode(jsonMap);
-        final restored = ChatMessagePayload.tryParse(corrupted);
+          // Serialize normally (produces both sentAt and sentAtMs)
+          final jsonMap = original.toJson();
+          // Corrupt the ISO string
+          jsonMap['sentAt'] = 'NOT-A-DATE';
+          // Re-encode and parse
+          final corrupted = jsonEncode(jsonMap);
+          final restored = ChatMessagePayload.tryParse(corrupted);
 
-        expect(restored, isNotNull);
-        expect(restored!.sentAt, equals(testDateTime));
-      });
+          expect(restored, isNotNull);
+          expect(restored!.sentAt, equals(testDateTime));
+        },
+      );
 
       test('handles v1 payload without sentAtMs gracefully', () {
         final json = jsonEncode({

@@ -348,15 +348,7 @@ class P2pSessionController extends ChangeNotifier {
       final resolvedRoomTitle = device.deviceName.isNotEmpty
           ? device.deviceName
           : 'Nearby host';
-      final resolvedHostName = device.deviceAddress.isNotEmpty
-          ? device.deviceAddress
-          : 'Unidentified host';
-      unawaited(
-        _notificationService.notifyConnected(
-          resolvedRoomTitle,
-          resolvedHostName,
-        ),
-      );
+      unawaited(_notificationService.notifyConnected(resolvedRoomTitle));
       // Request the host's active conversation. Retry a few times in case
       // the text transport isn't ready immediately after the Wi-Fi handshake.
       // Also broadcast our identity so the host knows our display name and
@@ -679,14 +671,18 @@ class P2pSessionController extends ChangeNotifier {
       // On the very first client list after starting a session, just
       // populate the tracking sets without firing notifications.
       // This prevents the joiner from being told "Host joined".
+      // Only skip for clients — hosts should see all join notifications
+      // since no one is present when they start hosting.
       if (!_initialPeerListReceived) {
         _initialPeerListReceived = true;
-        _currentPeerIds
-          ..clear()
-          ..addAll(newIds);
-        _everSeenPeerIds.addAll(newIds);
-        notifyListeners();
-        return;
+        if (_role == P2pSessionRole.client) {
+          _currentPeerIds
+            ..clear()
+            ..addAll(newIds);
+          _everSeenPeerIds.addAll(newIds);
+          notifyListeners();
+          return;
+        }
       }
 
       final clientMap = <String, P2pClientInfo>{

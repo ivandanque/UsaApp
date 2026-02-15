@@ -39,7 +39,7 @@ class HomePage extends StatelessWidget {
             _DestinationTile(
               icon: Icons.message_outlined,
               title: 'Conversations',
-              subtitle: 'Continue chatting with your current peers.',
+              subtitle: 'Start chatting with your peers.',
               onTap: () => Navigator.of(
                 context,
               ).pushNamed(ConversationModePage.routeName),

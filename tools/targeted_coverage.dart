@@ -10,7 +10,9 @@ void main(List<String> args) {
   final targets = args.isNotEmpty ? args : _defaultTargets;
   final file = File('coverage/lcov.info');
   if (!file.existsSync()) {
-    stderr.writeln('coverage/lcov.info not found. Run `flutter test --coverage`.');
+    stderr.writeln(
+      'coverage/lcov.info not found. Run `flutter test --coverage`.',
+    );
     exit(1);
   }
 
@@ -26,10 +28,7 @@ void main(List<String> args) {
   for (final line in lines) {
     if (line.startsWith('SF:')) {
       if (include && currentFile.isNotEmpty) {
-        stats[currentFile] = {
-          'lines': fileLf,
-          'covered': fileLh,
-        };
+        stats[currentFile] = {'lines': fileLf, 'covered': fileLh};
       }
       currentFile = line.substring(3);
       include = targets.any((target) => currentFile.endsWith(target));
@@ -53,10 +52,7 @@ void main(List<String> args) {
   }
 
   if (include && currentFile.isNotEmpty) {
-    stats[currentFile] = {
-      'lines': fileLf,
-      'covered': fileLh,
-    };
+    stats[currentFile] = {'lines': fileLf, 'covered': fileLh};
   }
 
   if (totalLf == 0) {
@@ -65,7 +61,9 @@ void main(List<String> args) {
   }
 
   final coverage = totalLh / totalLf * 100;
-  print('Targeted coverage: ${coverage.toStringAsFixed(2)}% ($totalLh/$totalLf lines)');
+  print(
+    'Targeted coverage: ${coverage.toStringAsFixed(2)}% ($totalLh/$totalLf lines)',
+  );
 
   for (final entry in stats.entries) {
     final path = entry.key;
@@ -74,7 +72,9 @@ void main(List<String> args) {
     final coveredCount = metrics['covered'] ?? 0;
     if (linesCount > 0) {
       final percent = coveredCount / linesCount * 100;
-      print(' - ${path.split('/').last}: ${percent.toStringAsFixed(2)}% ($coveredCount/$linesCount)');
+      print(
+        ' - ${path.split('/').last}: ${percent.toStringAsFixed(2)}% ($coveredCount/$linesCount)',
+      );
     }
   }
 }

@@ -24,8 +24,8 @@ class FakeNotificationService implements NotificationService {
   Future<void> initialize({bool requestPermissions = true}) async {}
 
   @override
-  Future<void> notifyConnected(String roomTitle, String hostName) async {
-    connectionCalls.add({'room': roomTitle, 'host': hostName});
+  Future<void> notifyConnected(String roomTitle) async {
+    connectionCalls.add({'room': roomTitle});
   }
 
   @override

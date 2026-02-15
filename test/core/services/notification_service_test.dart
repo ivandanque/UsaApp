@@ -72,7 +72,7 @@ void main() {
 
     test('connected/disconnected notifications', () async {
       await svc.initialize();
-      await svc.notifyConnected('roomA', 'hostA');
+      await svc.notifyConnected('roomA');
       await svc.notifyDisconnected();
       expect(plugin.calls.length, equals(2));
       expect(plugin.calls[0].id, equals(9002));

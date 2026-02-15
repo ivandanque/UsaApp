@@ -72,10 +72,10 @@ class _ConversationHistoryPageState extends State<ConversationHistoryPage> {
           final icon = a.mimeType.startsWith('video/')
               ? Icons.videocam
               : a.mimeType.startsWith('audio/')
-                  ? Icons.audiotrack
-                  : a.mimeType == 'application/pdf'
-                      ? Icons.picture_as_pdf
-                      : Icons.insert_drive_file;
+              ? Icons.audiotrack
+              : a.mimeType == 'application/pdf'
+              ? Icons.picture_as_pdf
+              : Icons.insert_drive_file;
           return Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
             child: Row(

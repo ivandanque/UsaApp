@@ -14,10 +14,10 @@ class ChatAttachment {
   final String mimeType;
   final int sizeBytes;
   final String uri;
-  
+
   /// IP address of sender for P2P file download (optional)
   final String? senderHostIp;
-  
+
   /// Port of sender for P2P file download (optional)
   final int? senderPort;
 

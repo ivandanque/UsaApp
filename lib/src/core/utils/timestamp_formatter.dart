@@ -73,10 +73,7 @@ class TimestampFormatter {
   }
 
   /// Format just the time portion in the user's preferred clock style.
-  static String _formatTime(
-    DateTime local,
-    TimeFormatPreference pref,
-  ) {
+  static String _formatTime(DateTime local, TimeFormatPreference pref) {
     if (pref == TimeFormatPreference.twelveHour) {
       final hour = local.hour % 12 == 0 ? 12 : local.hour % 12;
       final minutes = local.minute.toString().padLeft(2, '0');

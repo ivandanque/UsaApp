@@ -9,22 +9,32 @@ class FakeP2pForSettings extends P2pService {
   bool _services = true;
 
   @override
-  Future<void> checkAndRequestPermissions({P2pSessionRole role = P2pSessionRole.host, bool requestIfMissing = true}) async {
+  Future<void> checkAndRequestPermissions({
+    P2pSessionRole role = P2pSessionRole.host,
+    bool requestIfMissing = true,
+  }) async {
     // no-op
   }
 
   @override
-  Future<bool> areAllPermissionsGranted({P2pSessionRole role = P2pSessionRole.host, bool requestIfMissing = true}) async {
+  Future<bool> areAllPermissionsGranted({
+    P2pSessionRole role = P2pSessionRole.host,
+    bool requestIfMissing = true,
+  }) async {
     return _perms;
   }
 
   @override
-  Future<void> checkAndEnableServices({P2pSessionRole role = P2pSessionRole.host}) async {
+  Future<void> checkAndEnableServices({
+    P2pSessionRole role = P2pSessionRole.host,
+  }) async {
     // no-op
   }
 
   @override
-  Future<bool> areAllServicesEnabled({P2pSessionRole role = P2pSessionRole.host}) async {
+  Future<bool> areAllServicesEnabled({
+    P2pSessionRole role = P2pSessionRole.host,
+  }) async {
     return _services;
   }
 }

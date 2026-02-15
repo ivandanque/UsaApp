@@ -25,7 +25,8 @@ class _ProfilePageState extends State<ProfilePage> {
   final _groupNameController = TextEditingController();
 
   UserRole _selectedRole = UserRole.other;
-  TimeFormatPreference _selectedTimeFormat = TimeFormatPreference.twentyFourHour;
+  TimeFormatPreference _selectedTimeFormat =
+      TimeFormatPreference.twentyFourHour;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _profileImageBase64;

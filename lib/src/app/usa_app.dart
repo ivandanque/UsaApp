@@ -12,8 +12,9 @@ class UsaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    AppDependencies.instance.notificationService
-        .setNavigatorKey(AppNavigator.key);
+    AppDependencies.instance.notificationService.setNavigatorKey(
+      AppNavigator.key,
+    );
     return MaterialApp(
       title: AppConstants.appName,
       debugShowCheckedModeBanner: false,

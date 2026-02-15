@@ -53,7 +53,7 @@ class ChatController extends ChangeNotifier {
 
   /// Optional callback to show error messages to user
   void Function(String message)? onDownloadError;
-  
+
   /// Optional callback to show info messages to user
   void Function(String message)? onDownloadInfo;
 
@@ -107,82 +107,85 @@ class ChatController extends ChangeNotifier {
     _subscription =
         _watchMessages(
           WatchMessagesParams(conversationId: _conversation.id),
-        ).listen((messages) {
-          // mark that we've received the initial snapshot for this convo
-          _hasLoadedInitial = true;
-          try {
-            // Log instance id so we can verify UI/controller instance alignment
-            const logTag = 'ChatController';
-            final logger = const Logger(logTag);
-            logger.info(
-              '[ChatController:$hashCode] received ${messages.length} messages for conversation ${_conversation.id}',
-            );
+        ).listen(
+          (messages) {
+            // mark that we've received the initial snapshot for this convo
+            _hasLoadedInitial = true;
             try {
-              final ds = AppDependencies.instance.driftChatMessageDataSource;
-              if (ds != null) {
-                unawaited(
-                  ds.getMessageCount(_conversation.id).then((cnt) {
-                    const logTag2 = 'ChatController.debug';
-                    final logger2 = const Logger(logTag2);
-                    logger2.info(
-                      '[ChatController.debug:$hashCode] DB count for convo ${_conversation.id} = $cnt',
-                    );
-                  }),
-                );
-              }
-            } catch (_) {}
-          } catch (_) {}
-          // Build new view models from DB, but preserve any in-memory
-          // attachment URIs that were set by a download that hasn't been
-          // persisted to DB yet (race between download completion and
-          // the next DB watch emission).
-          final oldByMsgId = <String, ChatMessageViewModel>{
-            for (final m in _messages) m.id: m,
-          };
-
-          _messages.clear();
-          _messages.addAll(
-            messages.map((message) {
-              final vm = ChatMessageViewModel.fromEntity(
-                message,
-                localPeerId: _identity.id,
-                localIdentity: _identity,
-                knownPeers: _knownPeers,
+              // Log instance id so we can verify UI/controller instance alignment
+              const logTag = 'ChatController';
+              final logger = const Logger(logTag);
+              logger.info(
+                '[ChatController:$hashCode] received ${messages.length} messages for conversation ${_conversation.id}',
               );
+              try {
+                final ds = AppDependencies.instance.driftChatMessageDataSource;
+                if (ds != null) {
+                  unawaited(
+                    ds.getMessageCount(_conversation.id).then((cnt) {
+                      const logTag2 = 'ChatController.debug';
+                      final logger2 = const Logger(logTag2);
+                      logger2.info(
+                        '[ChatController.debug:$hashCode] DB count for convo ${_conversation.id} = $cnt',
+                      );
+                    }),
+                  );
+                }
+              } catch (_) {}
+            } catch (_) {}
+            // Build new view models from DB, but preserve any in-memory
+            // attachment URIs that were set by a download that hasn't been
+            // persisted to DB yet (race between download completion and
+            // the next DB watch emission).
+            final oldByMsgId = <String, ChatMessageViewModel>{
+              for (final m in _messages) m.id: m,
+            };
 
-              // Merge in-memory attachment URIs that are newer than DB
-              final oldVm = oldByMsgId[vm.id];
-              if (oldVm != null && oldVm.attachments.isNotEmpty) {
-                for (int i = 0; i < vm.attachments.length; i++) {
-                  final dbA = vm.attachments[i];
-                  if (dbA.uri.isEmpty) {
-                    // Check if in-memory version has a downloaded URI
-                    final oldA = oldVm.attachments
-                        .where((a) => a.id == dbA.id)
-                        .firstOrNull;
-                    if (oldA != null && oldA.uri.isNotEmpty) {
-                      vm.attachments[i] = dbA.copyWith(uri: oldA.uri);
+            _messages.clear();
+            _messages.addAll(
+              messages.map((message) {
+                final vm = ChatMessageViewModel.fromEntity(
+                  message,
+                  localPeerId: _identity.id,
+                  localIdentity: _identity,
+                  knownPeers: _knownPeers,
+                );
+
+                // Merge in-memory attachment URIs that are newer than DB
+                final oldVm = oldByMsgId[vm.id];
+                if (oldVm != null && oldVm.attachments.isNotEmpty) {
+                  for (int i = 0; i < vm.attachments.length; i++) {
+                    final dbA = vm.attachments[i];
+                    if (dbA.uri.isEmpty) {
+                      // Check if in-memory version has a downloaded URI
+                      final oldA = oldVm.attachments
+                          .where((a) => a.id == dbA.id)
+                          .firstOrNull;
+                      if (oldA != null && oldA.uri.isNotEmpty) {
+                        vm.attachments[i] = dbA.copyWith(uri: oldA.uri);
+                      }
                     }
                   }
                 }
-              }
-              return vm;
-            }),
-          );
-          notifyListeners();
+                return vm;
+              }),
+            );
+            notifyListeners();
 
-          // Auto-download any attachments that have transport info but no
-          // local file yet (e.g. from history sync).  This runs on every
-          // DB watch emission but _downloadingAttachmentIds prevents
-          // duplicate download attempts.
-          _checkPendingAttachmentDownloads();
-        }, onError: (Object error, StackTrace? stack) {
-          const logTag = 'ChatController';
-          final logger = const Logger(logTag);
-          logger.info(
-            '[ChatController:$hashCode] stream error for convo ${_conversation.id}: $error',
-          );
-        });
+            // Auto-download any attachments that have transport info but no
+            // local file yet (e.g. from history sync).  This runs on every
+            // DB watch emission but _downloadingAttachmentIds prevents
+            // duplicate download attempts.
+            _checkPendingAttachmentDownloads();
+          },
+          onError: (Object error, StackTrace? stack) {
+            const logTag = 'ChatController';
+            final logger = const Logger(logTag);
+            logger.info(
+              '[ChatController:$hashCode] stream error for convo ${_conversation.id}: $error',
+            );
+          },
+        );
   }
 
   /// Scan loaded messages for undownloaded attachments that have transport
@@ -381,8 +384,8 @@ class ChatController extends ChangeNotifier {
         debugPrint(
           'ChatController: Attachment ${attachment.filename} - IP: ${attachment.senderHostIp}, Port: ${attachment.senderPort}, URI: ${attachment.uri}, ID: ${attachment.id}',
         );
-        if (attachment.senderHostIp != null && 
-            attachment.senderPort != null && 
+        if (attachment.senderHostIp != null &&
+            attachment.senderPort != null &&
             attachment.uri.isEmpty) {
           // Store attachment object for retry attempts
           _pendingFileInfos[attachment.id] = attachment.toJson();
@@ -449,7 +452,7 @@ class ChatController extends ChangeNotifier {
     debugPrint(
       'ChatController: Attempting to download attachment $name from $uri',
     );
-    
+
     onDownloadInfo?.call('Downloading $name...');
 
     int attempts = 0;
@@ -471,9 +474,7 @@ class ChatController extends ChangeNotifier {
           final outFile = File(localPath);
           await outFile.writeAsBytes(resp.bodyBytes, flush: true);
 
-          debugPrint(
-            'ChatController: Saved attachment to $localPath',
-          );
+          debugPrint('ChatController: Saved attachment to $localPath');
 
           // Update failure count and persist attachment URI in stored message
           _downloadFailures.remove(fileId);
@@ -492,7 +493,7 @@ class ChatController extends ChangeNotifier {
               }
               return a;
             }).toList();
-            
+
             // Create new ViewModel instance to trigger rebuild
             _messages[idx] = ChatMessageViewModel(
               id: vm.id,
@@ -505,12 +506,12 @@ class ChatController extends ChangeNotifier {
               isLocal: vm.isLocal,
               senderIdentity: vm.senderIdentity,
             );
-            
+
             debugPrint(
               'ChatController: Updated message ${vm.id} with new attachment list, notifying listeners',
             );
             notifyListeners();
-            
+
             // Persist updated attachment URI to DB
             await _sendMessage(
               SendMessageParams(
