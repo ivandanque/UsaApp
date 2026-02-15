@@ -228,6 +228,7 @@ class _FullScreenVideoPage extends StatefulWidget {
 
 class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
   bool _isPlaying = false;
+  bool _showControls = true;
 
   @override
   void initState() {
@@ -253,6 +254,10 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
     widget.videoController.removeListener(_onVideoUpdate);
     widget.videoController.pause();
     super.dispose();
+  }
+
+  void _toggleControls() {
+    setState(() => _showControls = !_showControls);
   }
 
   String _fmt(Duration d) {
@@ -282,82 +287,120 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // ── Video ──
-            Expanded(
-              child: Center(
-                child: AspectRatio(
-                  aspectRatio: aspect,
-                  child: VideoPlayer(vc),
+      body: OrientationBuilder(
+        builder: (context, orientation) {
+          final isLandscape = orientation == Orientation.landscape;
+
+          if (isLandscape) {
+            // ── Landscape: fullscreen video with overlay controls ──
+            return SafeArea(
+              child: GestureDetector(
+                onTap: _toggleControls,
+                behavior: HitTestBehavior.opaque,
+                child: Stack(
+                  children: [
+                    // Video fills the screen
+                    Center(
+                      child: AspectRatio(
+                        aspectRatio: aspect,
+                        child: VideoPlayer(vc),
+                      ),
+                    ),
+
+                    // Overlay controls (shown on tap)
+                    if (_showControls)
+                      Positioned.fill(
+                        child: Container(
+                          color: Colors.black.withOpacity(0.5),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [_buildControls(vc, duration, position)],
+                          ),
+                        ),
+                      ),
+                  ],
                 ),
               ),
+            );
+          }
+
+          // ── Portrait: video at top, controls right below ──
+          return SafeArea(
+            child: Column(
+              children: [
+                // Video centered in available space
+                AspectRatio(
+                  aspectRatio: aspect,
+                  child: Container(color: Colors.black, child: VideoPlayer(vc)),
+                ),
+
+                // Controls immediately below video
+                _buildControls(vc, duration, position),
+
+                // Spacer to push everything up
+                const Spacer(),
+              ],
             ),
+          );
+        },
+      ),
+    );
+  }
 
-            // ── Controls below the video ──
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Scrubbing bar
-                  SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      activeTrackColor: Colors.white,
-                      inactiveTrackColor: Colors.white24,
-                      thumbColor: Colors.white,
-                      thumbShape: const RoundSliderThumbShape(
-                        enabledThumbRadius: 6,
-                      ),
-                      overlayShape: const RoundSliderOverlayShape(
-                        overlayRadius: 14,
-                      ),
-                      trackHeight: 3,
-                    ),
-                    child: Slider(
-                      min: 0,
-                      max: duration.inMilliseconds.toDouble().clamp(1, double.infinity),
-                      value: position.inMilliseconds
-                          .toDouble()
-                          .clamp(0, duration.inMilliseconds.toDouble()),
-                      onChanged: (v) {
-                        vc.seekTo(Duration(milliseconds: v.toInt()));
-                      },
-                    ),
-                  ),
-
-                  // Time + play/pause row
-                  Row(
-                    children: [
-                      IconButton(
-                        icon: Icon(
-                          _isPlaying
-                              ? Icons.pause_rounded
-                              : Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 32,
-                        ),
-                        onPressed: () {
-                          _isPlaying ? vc.pause() : vc.play();
-                        },
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${_fmt(position)} / ${_fmt(duration)}',
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+  Widget _buildControls(
+    VideoPlayerController vc,
+    Duration duration,
+    Duration position,
+  ) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Scrubbing bar
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white24,
+              thumbColor: Colors.white,
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+              trackHeight: 3,
+            ),
+            child: Slider(
+              min: 0,
+              max: duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+              value: position.inMilliseconds.toDouble().clamp(
+                0,
+                duration.inMilliseconds.toDouble(),
               ),
+              onChanged: (v) {
+                vc.seekTo(Duration(milliseconds: v.toInt()));
+              },
             ),
-          ],
-        ),
+          ),
+
+          // Time + play/pause row
+          Row(
+            children: [
+              IconButton(
+                icon: Icon(
+                  _isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: Colors.white,
+                  size: 32,
+                ),
+                onPressed: () {
+                  _isPlaying ? vc.pause() : vc.play();
+                },
+              ),
+              const SizedBox(width: 4),
+              Text(
+                '${_fmt(position)} / ${_fmt(duration)}',
+                style: const TextStyle(color: Colors.white70, fontSize: 13),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
