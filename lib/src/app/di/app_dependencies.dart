@@ -33,6 +33,7 @@ class AppDependencies {
   static const String _prefBackgroundScanningEnabled =
       'pref_background_scanning_enabled';
   static const String _prefScanCadenceSeconds = 'pref_scan_cadence_seconds';
+  static const String _prefVibrationEnabled = 'pref_vibration_enabled';
   static const int _defaultScanCadenceSeconds = 5;
 
   final Logger _logger = const Logger('AppDependencies');
@@ -188,6 +189,8 @@ class AppDependencies {
       _sharedPreferences.getBool(_prefBackgroundScanningEnabled) ?? false;
     int get scanCadenceSeconds =>
       _sharedPreferences.getInt(_prefScanCadenceSeconds) ?? _defaultScanCadenceSeconds;
+    bool get vibrationEnabled =>
+      _sharedPreferences.getBool(_prefVibrationEnabled) ?? true;
 
   /// The user's preferred time display format (12h / 24h).
   TimeFormatPreference get timeFormat => _timeFormat;
@@ -283,6 +286,15 @@ class AppDependencies {
     );
   }
 
+  Future<void> setVibrationEnabled(bool enabled) async {
+    await _sharedPreferences.setBool(
+      _prefVibrationEnabled,
+      enabled,
+    );
+    // Keep the notification service in sync.
+    _notificationService?.vibrationEnabled = () => enabled;
+  }
+
   /// Initialize the platform-specific parts of `NotificationService`.
   ///
   /// Call this during app runtime startup. Tests should avoid calling
@@ -291,6 +303,8 @@ class AppDependencies {
     _notificationService ??= NotificationService(
       plugin: FlutterLocalNotificationsPlugin(),
     );
+    // Wire vibration preference before initializing.
+    _notificationService!.vibrationEnabled = () => vibrationEnabled;
     if (!kIsWeb) {
       await _notificationService!.initialize();
     }

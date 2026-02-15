@@ -21,7 +21,7 @@ void main() {
     expect(initial, isFalse);
 
     // Toggle the switch on
-    final switchFinder = find.byType(SwitchListTile);
+    final switchFinder = find.widgetWithText(SwitchListTile, 'Background scanning');
     expect(switchFinder, findsOneWidget);
     await tester.tap(switchFinder);
     await tester.pumpAndSettle();

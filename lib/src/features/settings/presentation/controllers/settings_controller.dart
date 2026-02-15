@@ -22,6 +22,7 @@ class SettingsController extends ChangeNotifier {
   String _deviceCode = '';
   bool _backgroundScanningEnabled = false;
   int _scanCadenceSeconds = 5;
+  bool _vibrationEnabled = true;
 
   bool get isCheckingPermissions => _isCheckingPermissions;
   bool get isCheckingServices => _isCheckingServices;
@@ -33,6 +34,7 @@ class SettingsController extends ChangeNotifier {
   String get deviceCode => _deviceCode;
   bool get backgroundScanningEnabled => _backgroundScanningEnabled;
   int get scanCadenceSeconds => _scanCadenceSeconds;
+  bool get vibrationEnabled => _vibrationEnabled;
 
   /// Check and request all necessary permissions.
   Future<void> setupPermissions() async {
@@ -80,6 +82,7 @@ class SettingsController extends ChangeNotifier {
       // Load persisted scanning preferences
       _backgroundScanningEnabled = AppDependencies.instance.backgroundScanningEnabled;
       _scanCadenceSeconds = AppDependencies.instance.scanCadenceSeconds;
+      _vibrationEnabled = AppDependencies.instance.vibrationEnabled;
       final identity = AppDependencies.instance.peerIdentity;
       _displayName = identity.displayName;
       _deviceCode = identity.id;
@@ -107,6 +110,16 @@ class SettingsController extends ChangeNotifier {
       notifyListeners();
     } catch (e) {
       _logger.error('Error setting scan cadence: $e');
+    }
+  }
+
+  Future<void> setVibrationEnabled(bool enabled) async {
+    try {
+      await AppDependencies.instance.setVibrationEnabled(enabled);
+      _vibrationEnabled = enabled;
+      notifyListeners();
+    } catch (e) {
+      _logger.error('Error setting vibration: $e');
     }
   }
 

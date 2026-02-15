@@ -5,6 +5,7 @@ import 'package:usaapp/src/core/services/notification_service.dart';
 
 class TestNotificationPlugin implements NotificationPlugin {
 	final List<_ShowCall> calls = [];
+	final List<int> cancelledIds = [];
 
 	@override
 	Future<void> show({
@@ -16,6 +17,22 @@ class TestNotificationPlugin implements NotificationPlugin {
 	}) async {
 		calls.add(_ShowCall(id: id, title: title, body: body, payload: payload));
 	}
+
+	@override
+	Future<void> cancel({required int id}) async {
+		cancelledIds.add(id);
+	}
+
+	@override
+	Future<bool?> initialize({
+		required InitializationSettings settings,
+		void Function(NotificationResponse)? onDidReceiveNotificationResponse,
+	}) async {
+		return true;
+	}
+
+	@override
+	Future<bool?> requestPermission() async => true;
 }
 
 class _ShowCall {
@@ -47,7 +64,7 @@ void main() {
 			expect(plugin.calls, hasLength(1));
 			final c = plugin.calls.first;
 			expect(c.id, equals(9001));
-			expect(c.title, contains('r'));
+			expect(c.title, equals('A host has been found'));
 			expect(c.payload, equals('rooms'));
 		});
 

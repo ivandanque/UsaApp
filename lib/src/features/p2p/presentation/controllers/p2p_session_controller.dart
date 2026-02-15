@@ -75,6 +75,20 @@ class P2pSessionController extends ChangeNotifier {
   StreamSubscription<List<BleDiscoveredDevice>>? _scanSubscription;
   StreamSubscription<({String senderId, String text})>? _hostTextSubscription;
   StreamSubscription<String>? _clientTextSubscription;
+  StreamSubscription<List<P2pClientInfo>>? _clientListSubscription;
+
+  /// IDs of peers currently in the session.
+  final Set<String> _currentPeerIds = <String>{};
+
+  /// IDs of peers that have been seen at any point during this session.
+  /// Used to distinguish "joined" from "rejoined".
+  final Set<String> _everSeenPeerIds = <String>{};
+
+  /// Maps transport-level client IDs (from [P2pClientInfo.id]) to the
+  /// user-set display name.  Populated from incoming [ChatMessagePayload]s
+  /// whose transport sender ID is known (host side) and from the
+  /// [P2pClientInfo.username] field as a fallback.
+  final Map<String, String> _transportIdToDisplayName = <String, String>{};
 
   final List<BleDiscoveredDevice> _discoveredDevices = <BleDiscoveredDevice>[];
   bool _isScanning = false;
@@ -415,6 +429,7 @@ class P2pSessionController extends ChangeNotifier {
     _scanSubscription?.cancel();
     _hostTextSubscription?.cancel();
     _clientTextSubscription?.cancel();
+    _clientListSubscription?.cancel();
     unawaited(_incomingMessagesController.close());
 
     final activeRole = _role;
@@ -503,6 +518,12 @@ class P2pSessionController extends ChangeNotifier {
     }
 
     if (added) {
+      // Fire the notification immediately for the first batch so the user
+      // doesn't have to wait an entire scan-cadence interval.  Subsequent
+      // discoveries are still batched via the periodic timer.
+      if (_roomsNotificationTimer == null) {
+        unawaited(_flushRoomNotifications());
+      }
       _ensureNotificationTimerRunning();
     }
   }
@@ -573,6 +594,15 @@ class P2pSessionController extends ChangeNotifier {
         _setError('Host text stream error: $error');
       },
     );
+
+    // Track client list changes for join/leave/rejoin notifications.
+    _clientListSubscription?.cancel();
+    _clientListSubscription = host.streamClientList().listen(
+      _diffClientList,
+      onError: (Object error) {
+        debugPrint('Host client list stream error: $error');
+      },
+    );
   }
 
   void _listenToClient(FlutterP2pClient client) {
@@ -590,6 +620,120 @@ class P2pSessionController extends ChangeNotifier {
       _handleIncomingText,
       onError: (Object error) => _setError('Client text stream error: $error'),
     );
+
+    // Track client list changes for join/leave/rejoin notifications.
+    _clientListSubscription?.cancel();
+    _clientListSubscription = client.streamClientList().listen(
+      _diffClientList,
+      onError: (Object error) {
+        debugPrint('Client list stream error: $error');
+      },
+    );
+  }
+
+  /// Compares the latest client list with the previous snapshot and fires
+  /// join / leave / rejoin notifications accordingly.
+  void _diffClientList(List<P2pClientInfo> clients) {
+    final newIds = <String>{for (final c in clients) c.id};
+
+    // Nothing changed since the last emission — skip the rebuild.
+    if (newIds.length == _currentPeerIds.length &&
+        newIds.containsAll(_currentPeerIds)) {
+      return;
+    }
+
+    // Only fire join/leave/rejoin notifications when there is an active
+    // session (host is up or client is connected).  During pure scanning
+    // the client list is meaningless and would produce spurious alerts.
+    final inActiveSession = isHostingActive || isClientConnected;
+
+    if (inActiveSession) {
+      final clientMap = <String, P2pClientInfo>{
+        for (final c in clients) c.id: c,
+      };
+
+      // Detect peers that left (were in _currentPeerIds but not in newIds).
+      for (final id in _currentPeerIds) {
+        if (!newIds.contains(id)) {
+          final name = _resolveDisplayNameForTransport(id);
+          final profileImage = _resolveProfileImageForTransport(id);
+          unawaited(
+            _notificationService.notifyPeerLeft(
+              name,
+              profileImageBase64: profileImage,
+            ),
+          );
+        }
+      }
+
+      // Detect peers that joined or rejoined.
+      for (final id in newIds) {
+        if (!_currentPeerIds.contains(id)) {
+          final info = clientMap[id];
+          // Prefer the mapping we built from chat messages; fall back to
+          // the transport-level username; last resort the knownPeers map.
+          final name = _resolveDisplayNameForTransport(id, fallbackUsername: info?.username);
+          final profileImage = _resolveProfileImageForTransport(id);
+          // Record the username so that if this peer leaves before sending
+          // a chat message, we still show something sensible.
+          if (info != null && info.username.isNotEmpty) {
+            _transportIdToDisplayName.putIfAbsent(id, () => info.username);
+          }
+          if (_everSeenPeerIds.contains(id)) {
+            // Peer was seen before in this session → rejoin.
+            unawaited(
+              _notificationService.notifyPeerRejoined(
+                name,
+                profileImageBase64: profileImage,
+              ),
+            );
+          } else {
+            // Brand-new peer → first join.
+            unawaited(
+              _notificationService.notifyPeerJoined(
+                name,
+                profileImageBase64: profileImage,
+              ),
+            );
+          }
+        }
+      }
+    }
+
+    _currentPeerIds
+      ..clear()
+      ..addAll(newIds);
+    _everSeenPeerIds.addAll(newIds);
+    notifyListeners();
+  }
+
+  /// Best-effort lookup for a display name given a **transport-level**
+  /// client ID.  Checks in order:
+  ///  1. `_transportIdToDisplayName` (populated from chat message payloads)
+  ///  2. [fallbackUsername] (the raw `P2pClientInfo.username`, usually the
+  ///     device model)
+  ///  3. `AppDependencies.instance.knownPeers` keyed by app-level peer ID
+  ///     (unlikely to match transport IDs but kept for completeness)
+  ///  4. `'A peer'`
+  String _resolveDisplayNameForTransport(
+    String transportId, {
+    String? fallbackUsername,
+  }) {
+    final mapped = _transportIdToDisplayName[transportId];
+    if (mapped != null && mapped.isNotEmpty) return mapped;
+    if (fallbackUsername != null && fallbackUsername.isNotEmpty) {
+      return fallbackUsername;
+    }
+    final known = AppDependencies.instance.knownPeers[transportId];
+    if (known != null) return known.displayName;
+    return 'A peer';
+  }
+
+  /// Returns the profile image (base64) for a transport-level client ID,
+  /// if we have a known peer identity that matches.
+  String? _resolveProfileImageForTransport(String transportId) {
+    final known = AppDependencies.instance.knownPeers[transportId];
+    return known?.profileImage;
   }
 
   void _handleIncomingText(String raw, {String? senderId}) {
@@ -668,6 +812,15 @@ class P2pSessionController extends ChangeNotifier {
     final payload =
         ChatMessagePayload.tryParse(trimmed) ??
         ChatMessagePayload.fallback(trimmed);
+
+    // Record the mapping from transport client ID → user display name
+    // so that _diffClientList can show the correct name in join/leave
+    // notifications.  On the host side `senderId` is the transport-level
+    // P2pClientInfo.id; on the client side it is null.
+    if (senderId != null && payload.senderName.isNotEmpty) {
+      _transportIdToDisplayName[senderId] = payload.senderName;
+    }
+
     _activeConversationId = payload.conversationId;
     _activeConversationTitle = payload.conversationTitle;
     _ensureConversationSynced(

@@ -13,6 +13,9 @@ class FakeNotificationService implements NotificationService {
   final List<List<RoomSummary>> roomsCalls = [];
   final List<Map<String, String>> connectionCalls = [];
   final List<void> disconnectionCalls = [];
+  final List<String> peerJoinedCalls = [];
+  final List<String> peerLeftCalls = [];
+  final List<String> peerRejoinedCalls = [];
 
   @override
   void setNavigatorKey(globalKey) => null;
@@ -43,12 +46,32 @@ class FakeNotificationService implements NotificationService {
 
   @override
   Future<void> cancelScanningNotification() async {}
+
+  @override
+  Future<void> notifyPeerJoined(String displayName,
+      {String? profileImageBase64}) async {
+    peerJoinedCalls.add(displayName);
+  }
+
+  @override
+  Future<void> notifyPeerLeft(String displayName,
+      {String? profileImageBase64}) async {
+    peerLeftCalls.add(displayName);
+  }
+
+  @override
+  Future<void> notifyPeerRejoined(String displayName,
+      {String? profileImageBase64}) async {
+    peerRejoinedCalls.add(displayName);
+  }
+
+  @override
+  bool Function() vibrationEnabled = () => true;
 }
 
 class FakeClient implements p2p_pkg.FlutterP2pClient {
   final StreamController<List<p2p_pkg.BleDiscoveredDevice>> _controller =
       StreamController<List<p2p_pkg.BleDiscoveredDevice>>();
-  bool _initialized = false;
 
   // Expose a way to emit discovered devices in tests.
   void emitDevices(List<p2p_pkg.BleDiscoveredDevice> devices) {
@@ -56,9 +79,7 @@ class FakeClient implements p2p_pkg.FlutterP2pClient {
   }
 
   @override
-  Future<void> initialize() async {
-    _initialized = true;
-  }
+  Future<void> initialize() async {}
 
   @override
   Future<StreamSubscription<List<p2p_pkg.BleDiscoveredDevice>>> startScan(
@@ -100,6 +121,12 @@ class FakeClient implements p2p_pkg.FlutterP2pClient {
   @override
   Stream<String> streamReceivedTexts() async* {
     // no events
+  }
+
+  @override
+  Stream<List<p2p_pkg.P2pClientInfo>> streamClientList() async* {
+    // Emit empty list once; no further events during tests.
+    yield <p2p_pkg.P2pClientInfo>[];
   }
 
   // Unused in tests; provide noSuchMethod

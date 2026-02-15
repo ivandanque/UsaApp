@@ -915,17 +915,46 @@ class _HostModeSection extends StatelessWidget {
   }
 }
 
-class _ClientModeSection extends StatelessWidget {
+class _ClientModeSection extends StatefulWidget {
   const _ClientModeSection({required this.controller});
 
   final P2pSessionController controller;
 
   @override
+  State<_ClientModeSection> createState() => _ClientModeSectionState();
+}
+
+class _ClientModeSectionState extends State<_ClientModeSection> {
+  bool _autoStarted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Auto-start discovery when entering client mode per Feature 1 spec.
+    _scheduleAutoStartDiscovery();
+  }
+
+  void _scheduleAutoStartDiscovery() {
+    if (_autoStarted) return;
+    _autoStarted = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final c = widget.controller;
+      if (!mounted) return;
+      if (!c.isScanning && !c.isClientConnected && !c.isBusy) {
+        c.startDiscovery();
+      }
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final controller = widget.controller;
     final devices = controller.discoveredDevices;
     final clientState = controller.clientState;
     final isConnected = controller.isClientConnected;
     final isScanning = controller.isScanning;
+    final backgroundScanningEnabled =
+        AppDependencies.instance.backgroundScanningEnabled;
     final theme = Theme.of(context);
 
     return Column(
@@ -934,13 +963,38 @@ class _ClientModeSection extends StatelessWidget {
         Text(
           isConnected
               ? 'Connected to ${clientState?.hostSsid ?? 'host'}. You are ready to chat.'
-              : 'Scan for nearby hosts to join their conversation.',
+              : 'Searching for nearby hosts to join their conversation.',
           style: theme.textTheme.bodyLarge,
         ),
+        // Warn when background scanning is disabled
+        if (!backgroundScanningEnabled && !isConnected) ...[
+          const SizedBox(height: 8),
+          Card(
+            color: Colors.orange.shade50,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Icon(Icons.warning_amber, color: Colors.orange.shade700),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Background scanning is disabled. Keep the app open while searching, or enable it in Settings.',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.orange.shade900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
         const SizedBox(height: 16),
         ElevatedButton.icon(
           icon: Icon(isScanning ? Icons.pause : Icons.search),
-          label: Text(isScanning ? 'Stop discovery' : 'Discover nearby hosts'),
+          label: Text(
+              isScanning ? 'Stop searching' : 'Search nearby hosts'),
           onPressed: controller.isBusy
               ? null
               : () {
@@ -954,7 +1008,7 @@ class _ClientModeSection extends StatelessWidget {
         const SizedBox(height: 16),
         if (devices.isEmpty && !isScanning && !isConnected)
           Text(
-            'No advertised host found yet. Start discovery to look for peers.',
+            'No advertised host found yet.',
             style: theme.textTheme.bodyMedium,
           )
         else

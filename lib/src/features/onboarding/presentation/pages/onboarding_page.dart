@@ -355,7 +355,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<TimeFormatPreference>(
-            value: _selectedTimeFormat,
+            initialValue: _selectedTimeFormat,
             decoration: const InputDecoration(
               labelText: 'Time Format',
               prefixIcon: Icon(Icons.access_time),
@@ -523,9 +523,15 @@ class _OnboardingPageState extends State<OnboardingPage> {
         description:
             'Allows sharing chats, media, and files with nearby devices.',
       ),
+      _PermissionInfo(
+        icon: Icons.notifications_active,
+        title: 'Notifications',
+        description:
+            'Shows alerts when nearby hosts are found and when peers join or leave your chat.',
+      ),
     ];
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(24),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

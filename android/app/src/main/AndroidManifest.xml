@@ -4,6 +4,13 @@
     <!-- Internet for WebSocket communication -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Notifications (Android 13 / API 33+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"
+        tools:targetApi="tiramisu" />
+
+    <!-- Vibration for notification alerts -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <!-- Storage permissions (consider Scoped Storage for Android 10+) -->
     <uses-permission
         android:name="android.permission.READ_EXTERNAL_STORAGE"

@@ -44,6 +44,11 @@ class P2pService {
       logLabel: 'nearby Wi-Fi devices',
     );
 
+    await _requestPermissionWithTimeout(
+      permission: Permission.notification,
+      logLabel: 'notifications',
+    );
+
     if (!await _checkStoragePermission(interface)) {
       _logger.info('Requesting storage permission through plugin fallback');
       await _askStoragePermission(interface);
@@ -128,13 +133,26 @@ class P2pService {
       _logger.info('Unable to determine nearby Wi-Fi permission status: $e');
     }
 
+    var notificationGranted = true;
+    try {
+      final notifStatus = await Permission.notification.status;
+      notificationGranted = notifStatus.isGranted || notifStatus.isLimited;
+
+      if (!notificationGranted && !notifStatus.isPermanentlyDenied) {
+        // Treat as satisfied on platforms that do not expose this permission.
+        notificationGranted = true;
+      }
+    } catch (e) {
+      _logger.info('Unable to determine notification permission status: $e');
+    }
+
     final allGranted =
-        storage && p2p && bluetooth && locationGranted && nearbyGranted;
+        storage && p2p && bluetooth && locationGranted && nearbyGranted && notificationGranted;
 
     _logger.info(
       'Permission status for $role → storage:$storage, p2p:$p2p, '
       'bluetooth:$bluetooth, location:$locationGranted, nearby:$nearbyGranted, '
-      'all:$allGranted',
+      'notification:$notificationGranted, all:$allGranted',
     );
 
     return allGranted;

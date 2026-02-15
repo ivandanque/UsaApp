@@ -207,6 +207,17 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ),
+                    Card(
+                      child: SwitchListTile(
+                        title: const Text('Vibration on notifications'),
+                        subtitle: const Text(
+                          'Vibrate when a host is found or a peer joins/leaves',
+                        ),
+                        value: _controller.vibrationEnabled,
+                        onChanged: (bool v) =>
+                            _controller.setVibrationEnabled(v),
+                      ),
+                    ),
                   ],
                 );
               },
