@@ -307,7 +307,6 @@ class NotificationService {
     return _showChatEventNotification(
       title: '$displayName has joined the chat.',
       profileImageBase64: profileImageBase64,
-      payload: 'peer_joined',
     );
   }
 
@@ -319,7 +318,6 @@ class NotificationService {
     return _showChatEventNotification(
       title: '$displayName has left the chat.',
       profileImageBase64: profileImageBase64,
-      payload: 'peer_left',
     );
   }
 
@@ -331,28 +329,24 @@ class NotificationService {
     return _showChatEventNotification(
       title: '$displayName has rejoined the chat.',
       profileImageBase64: profileImageBase64,
-      payload: 'peer_rejoined',
     );
   }
 
   Future<void> _showChatEventNotification({
     required String title,
     String? profileImageBase64,
-    required String payload,
   }) async {
     if (!_initialized) return;
 
-    StyleInformation? styleInfo;
+    // Use largeIcon to display the profile picture in the notification itself
+    // (visible even when collapsed). BigPictureStyleInformation only shows
+    // when the notification is expanded.
+    AndroidBitmap<Object>? largeIcon;
     if (profileImageBase64 != null && profileImageBase64.isNotEmpty) {
       try {
-        styleInfo = BigPictureStyleInformation(
-          ByteArrayAndroidBitmap.fromBase64String(profileImageBase64),
-          contentTitle: title,
-          summaryText: title,
-          hideExpandedLargeIcon: true,
-        );
+        largeIcon = ByteArrayAndroidBitmap.fromBase64String(profileImageBase64);
       } catch (_) {
-        // If decoding fails, fall back to default style.
+        // If decoding fails, fall back to no icon.
       }
     }
 
@@ -372,11 +366,12 @@ class NotificationService {
           channelDescription: _chatEventsChannelDescription,
           importance: Importance.high,
           priority: Priority.high,
-          styleInformation: styleInfo,
+          largeIcon: largeIcon,
         ),
         iOS: const DarwinNotificationDetails(presentSound: true),
       ),
-      payload: payload,
+      // No payload — these notifications are informational only and
+      // should not navigate anywhere when tapped.
     );
   }
 
@@ -385,6 +380,12 @@ class NotificationService {
   // ---------------------------------------------------------------------------
 
   void _handleNotificationResponse(NotificationResponse response) {
+    // Only navigate for notifications that have a payload.
+    // Join/leave/rejoin notifications have no payload and are informational.
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) {
+      return;
+    }
     _navigateToConversationMode();
   }
 
