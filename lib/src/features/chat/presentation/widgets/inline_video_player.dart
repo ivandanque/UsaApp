@@ -1,13 +1,12 @@
 import 'dart:io';
 
-import 'package:chewie/chewie.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
-/// A self-contained inline video player widget that uses chewie for controls.
+/// A self-contained inline video player widget.
 ///
 /// Displays a thumbnail-like preview with a play button. When tapped, opens
-/// a full-screen chewie player. Disposes controllers automatically.
+/// a full-screen player with custom controls. Disposes controllers automatically.
 class InlineVideoPlayer extends StatefulWidget {
   const InlineVideoPlayer({
     super.key,
@@ -97,15 +96,9 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                 child: VideoPlayer(controller),
               ),
               // Dark overlay
-              Positioned.fill(
-                child: Container(color: Colors.black38),
-              ),
+              Positioned.fill(child: Container(color: Colors.black38)),
               // Play button
-              const Icon(
-                Icons.play_circle_fill,
-                size: 48,
-                color: Colors.white,
-              ),
+              const Icon(Icons.play_circle_fill, size: 48, color: Colors.white),
               // Filename at bottom
               if (widget.filename.isNotEmpty)
                 Positioned(
@@ -114,10 +107,7 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                   right: 8,
                   child: Text(
                     widget.filename,
-                    style: const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 11,
-                    ),
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -128,18 +118,17 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                   top: 6,
                   right: 8,
                   child: Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: Colors.black54,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       _formatDuration(controller.value.duration),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                      ),
+                      style: const TextStyle(color: Colors.white, fontSize: 11),
                     ),
                   ),
                 ),
@@ -223,7 +212,7 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
   }
 }
 
-/// Full-screen page with chewie controls for a video.
+/// Full-screen page with custom controls for a video.
 class _FullScreenVideoPage extends StatefulWidget {
   const _FullScreenVideoPage({
     required this.videoController,
@@ -238,31 +227,49 @@ class _FullScreenVideoPage extends StatefulWidget {
 }
 
 class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
-  late final ChewieController _chewieController;
+  bool _isPlaying = false;
 
   @override
   void initState() {
     super.initState();
-    _chewieController = ChewieController(
-      videoPlayerController: widget.videoController,
-      autoPlay: true,
-      looping: false,
-      showControlsOnInitialize: true,
-      allowFullScreen: false, // already full-screen
-    );
+    widget.videoController.addListener(_onVideoUpdate);
+    // Auto-play on open.
+    widget.videoController.play();
+  }
+
+  void _onVideoUpdate() {
+    if (!mounted) return;
+    final playing = widget.videoController.value.isPlaying;
+    if (playing != _isPlaying) {
+      setState(() => _isPlaying = playing);
+    } else {
+      // Rebuild for position updates.
+      setState(() {});
+    }
   }
 
   @override
   void dispose() {
-    // Only dispose chewie, NOT the video controller (owned by InlineVideoPlayer).
-    _chewieController.dispose();
-    // Pause when leaving the full-screen page.
+    widget.videoController.removeListener(_onVideoUpdate);
     widget.videoController.pause();
     super.dispose();
   }
 
+  String _fmt(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return h > 0 ? '$h:$m:$s' : '$m:$s';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final vc = widget.videoController;
+    final value = vc.value;
+    final duration = value.duration;
+    final position = value.position;
+    final aspect = value.aspectRatio > 0 ? value.aspectRatio : 16 / 9;
+
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
@@ -275,8 +282,82 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
-      body: Center(
-        child: Chewie(controller: _chewieController),
+      body: SafeArea(
+        child: Column(
+          children: [
+            // ── Video ──
+            Expanded(
+              child: Center(
+                child: AspectRatio(
+                  aspectRatio: aspect,
+                  child: VideoPlayer(vc),
+                ),
+              ),
+            ),
+
+            // ── Controls below the video ──
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Scrubbing bar
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: Colors.white,
+                      inactiveTrackColor: Colors.white24,
+                      thumbColor: Colors.white,
+                      thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 6,
+                      ),
+                      overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 14,
+                      ),
+                      trackHeight: 3,
+                    ),
+                    child: Slider(
+                      min: 0,
+                      max: duration.inMilliseconds.toDouble().clamp(1, double.infinity),
+                      value: position.inMilliseconds
+                          .toDouble()
+                          .clamp(0, duration.inMilliseconds.toDouble()),
+                      onChanged: (v) {
+                        vc.seekTo(Duration(milliseconds: v.toInt()));
+                      },
+                    ),
+                  ),
+
+                  // Time + play/pause row
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          _isPlaying
+                              ? Icons.pause_rounded
+                              : Icons.play_arrow_rounded,
+                          color: Colors.white,
+                          size: 32,
+                        ),
+                        onPressed: () {
+                          _isPlaying ? vc.pause() : vc.play();
+                        },
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '${_fmt(position)} / ${_fmt(duration)}',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
