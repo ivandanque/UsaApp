@@ -34,6 +34,7 @@ class AppDependencies {
       'pref_background_scanning_enabled';
   static const String _prefScanCadenceSeconds = 'pref_scan_cadence_seconds';
   static const String _prefVibrationEnabled = 'pref_vibration_enabled';
+  static const String _prefDebugMessagesEnabled = 'pref_debug_messages_enabled';
   static const int _defaultScanCadenceSeconds = 5;
 
   final Logger _logger = const Logger('AppDependencies');
@@ -193,6 +194,8 @@ class AppDependencies {
       _defaultScanCadenceSeconds;
   bool get vibrationEnabled =>
       _sharedPreferences.getBool(_prefVibrationEnabled) ?? true;
+  bool get debugMessagesEnabled =>
+      _sharedPreferences.getBool(_prefDebugMessagesEnabled) ?? false;
 
   /// The user's preferred time display format (12h / 24h).
   TimeFormatPreference get timeFormat => _timeFormat;
@@ -200,6 +203,10 @@ class AppDependencies {
   Future<void> setTimeFormat(TimeFormatPreference value) async {
     _timeFormat = value;
     await TimeFormatService.setPreference(value);
+  }
+
+  Future<void> setDebugMessagesEnabled(bool value) async {
+    await _sharedPreferences.setBool(_prefDebugMessagesEnabled, value);
   }
 
   // Database and drift data sources

@@ -153,35 +153,36 @@ class _ChatPageState extends State<ChatPage> {
             onPressed: _showLatencyDiagnostics,
           ),
           // Debug: print DB message counts and recent message IDs
-          IconButton(
-            icon: const Icon(Icons.bug_report),
-            tooltip: 'Debug messages',
-            onPressed: () async {
-              try {
-                final logger = const Logger('ChatPage.debug');
-                final ds = AppDependencies.instance.driftChatMessageDataSource;
-                if (ds == null) {
-                  logger.info('driftChatMessageDataSource is null');
-                  return;
+          if (AppDependencies.instance.debugMessagesEnabled)
+            IconButton(
+              icon: const Icon(Icons.bug_report),
+              tooltip: 'Debug messages',
+              onPressed: () async {
+                try {
+                  final logger = const Logger('ChatPage.debug');
+                  final ds = AppDependencies.instance.driftChatMessageDataSource;
+                  if (ds == null) {
+                    logger.info('driftChatMessageDataSource is null');
+                    return;
+                  }
+                  final count = await ds.getMessageCount(
+                    _controller.conversation.id,
+                  );
+                  // Fetch recent messages before 'now + 1 day' to include all
+                  final recent = await ds.getMessagesBefore(
+                    _controller.conversation.id,
+                    DateTime.now().toUtc().add(const Duration(days: 1)),
+                    limit: 100,
+                  );
+                  logger.info(
+                    'conversation=${_controller.conversation.id} count=$count recentIds=${recent.map((m) => m.id).join(',')}',
+                  );
+                } catch (e) {
+                  final logger = const Logger('ChatPage.debug');
+                  logger.error('error fetching debug info', e);
                 }
-                final count = await ds.getMessageCount(
-                  _controller.conversation.id,
-                );
-                // Fetch recent messages before 'now + 1 day' to include all
-                final recent = await ds.getMessagesBefore(
-                  _controller.conversation.id,
-                  DateTime.now().toUtc().add(const Duration(days: 1)),
-                  limit: 100,
-                );
-                logger.info(
-                  'conversation=${_controller.conversation.id} count=$count recentIds=${recent.map((m) => m.id).join(',')}',
-                );
-              } catch (e) {
-                final logger = const Logger('ChatPage.debug');
-                logger.error('error fetching debug info', e);
-              }
-            },
-          ),
+              },
+            ),
         ],
       ),
       body: Column(
