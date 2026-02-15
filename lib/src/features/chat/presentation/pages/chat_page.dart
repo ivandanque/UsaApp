@@ -18,6 +18,8 @@ import '../../domain/entities/chat_message_payload.dart';
 import '../../domain/entities/conversation.dart';
 import '../../../../core/models/peer_identity.dart';
 import '../controllers/chat_controller.dart';
+import '../widgets/fullscreen_image_viewer.dart';
+import '../widgets/inline_video_player.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -321,101 +323,11 @@ class _ChatPageState extends State<ChatPage> {
                             Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: message.attachments.map((a) {
-                                if (a.mimeType.startsWith('image/')) {
-                                  final uri = a.uri.trim();
-                                  if (uri.isNotEmpty) {
-                                    final file = File(uri);
-                                    if (file.existsSync()) {
-                                      return Padding(
-                                        padding: const EdgeInsets.only(top: 6.0),
-                                        child: ConstrainedBox(
-                                          constraints: const BoxConstraints(
-                                            maxWidth: 200,
-                                            maxHeight: 200,
-                                          ),
-                                          child: ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                            child: Image.file(
-                                              file,
-                                              fit: BoxFit.cover,
-                                            ),
-                                          ),
-                                        ),
-                                      );
-                                    }
-                                  }
-                                  
-                                  // Image not yet downloaded or download failed
-                                  final failureCount = _controller.downloadFailures[a.id] ?? 0;
-                                  final isDownloading = failureCount < 3 && uri.isEmpty;
-                                  
-                                  return Padding(
-                                    padding: const EdgeInsets.only(top: 6.0),
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          isDownloading ? Icons.downloading : Icons.image,
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Expanded(
-                                          child: Text(
-                                            isDownloading 
-                                                ? '${a.filename} (downloading...)' 
-                                                : a.filename,
-                                          ),
-                                        ),
-                                        // Show retry button if downloads failed
-                                        if (failureCount >= 3)
-                                          IconButton(
-                                            icon: const Icon(Icons.refresh),
-                                            tooltip: 'Retry download',
-                                            onPressed: () async {
-                                              await _controller
-                                                  .requestAttachmentDownload(
-                                                    message.id,
-                                                    a,
-                                                  );
-                                            },
-                                          )
-                                        else if (isDownloading)
-                                          const SizedBox(
-                                            width: 20,
-                                            height: 20,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 2,
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  );
-                                }
-
-                                // Non-image file
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 6.0),
-                                  child: Row(
-                                    children: [
-                                      const Icon(Icons.insert_drive_file),
-                                      const SizedBox(width: 8),
-                                      Expanded(child: Text(a.filename)),
-                                      if ((_controller.downloadFailures[a.id] ??
-                                              0) >=
-                                          3)
-                                        IconButton(
-                                          icon: const Icon(Icons.refresh),
-                                          tooltip: 'Retry download',
-                                          onPressed: () async {
-                                            await _controller
-                                                .requestAttachmentDownload(
-                                                  message.id,
-                                                  a,
-                                                );
-                                          },
-                                        ),
-                                    ],
-                                  ),
+                                return _buildAttachmentWidget(
+                                  context,
+                                  a,
+                                  message,
+                                  textColor,
                                 );
                               }).toList(),
                             ),
@@ -497,19 +409,9 @@ class _ChatPageState extends State<ChatPage> {
 
       // Create optimistic local message with attachment so UI updates immediately.
       final ext = p.extension(file.path).toLowerCase();
-      final isImage = [
-        '.png',
-        '.jpg',
-        '.jpeg',
-        '.gif',
-        '.webp',
-        '.heic',
-      ].contains(ext);
       final mime =
           (info.metadata['mimeType'] as String?) ??
-          (isImage
-              ? 'image/${ext.replaceFirst('.', '')}'
-              : 'application/octet-stream');
+          _mimeTypeForExtension(ext);
 
       final attachment = ChatAttachment(
         id: info.id,
@@ -577,19 +479,9 @@ class _ChatPageState extends State<ChatPage> {
 
       // Create optimistic local message with attachment so UI updates immediately.
       final ext = p.extension(file.path).toLowerCase();
-      final isImage = [
-        '.png',
-        '.jpg',
-        '.jpeg',
-        '.gif',
-        '.webp',
-        '.heic',
-      ].contains(ext);
       final mime =
           (info.metadata['mimeType'] as String?) ??
-          (isImage
-              ? 'image/${ext.replaceFirst('.', '')}'
-              : 'application/octet-stream');
+          _mimeTypeForExtension(ext);
 
       final attachment = ChatAttachment(
         id: info.id,
@@ -665,5 +557,296 @@ class _ChatPageState extends State<ChatPage> {
       isScrollControlled: true,
       builder: (_) => LatencyDiagnosticsSheet(controller: _p2pController),
     );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ATTACHMENT RENDERING
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Returns the appropriate icon for a file based on its mime type.
+  IconData _iconForMimeType(String mimeType) {
+    if (mimeType.startsWith('image/')) return Icons.image;
+    if (mimeType.startsWith('video/')) return Icons.videocam;
+    if (mimeType.startsWith('audio/')) return Icons.audiotrack;
+    if (mimeType == 'application/pdf') return Icons.picture_as_pdf;
+    return Icons.insert_drive_file;
+  }
+
+  Widget _buildAttachmentWidget(
+    BuildContext context,
+    ChatAttachment a,
+    ChatMessageViewModel message,
+    Color textColor,
+  ) {
+    final uri = a.uri.trim();
+    final isImage = a.mimeType.startsWith('image/');
+    final isVideo = a.mimeType.startsWith('video/');
+    final failureCount = _controller.downloadFailures[a.id] ?? 0;
+    final isDownloading = failureCount < 3 && uri.isEmpty;
+    final isDownloaded = uri.isNotEmpty && File(uri).existsSync();
+
+    // ── Downloaded image — show inline with tap-to-preview ──
+    if (isImage && isDownloaded) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6.0),
+        child: GestureDetector(
+          onTap: () => FullscreenImageViewer.open(
+            context,
+            file: File(uri),
+            heroTag: 'attachment_${a.id}',
+            title: a.filename,
+          ),
+          onLongPress: () => _showFileActionSheet(context, a, message),
+          child: Hero(
+            tag: 'attachment_${a.id}',
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 200,
+                maxHeight: 200,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(File(uri), fit: BoxFit.cover),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    // ── Downloaded video — show inline player with thumbnail + play ──
+    if (isVideo && isDownloaded) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6.0),
+        child: GestureDetector(
+          onLongPress: () => _showFileActionSheet(context, a, message),
+          child: InlineVideoPlayer(
+            filePath: uri,
+            filename: a.filename,
+          ),
+        ),
+      );
+    }
+
+    // ── Downloaded non-media file — show file row with long-press ──
+    if (isDownloaded) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 6.0),
+        child: GestureDetector(
+          onLongPress: () => _showFileActionSheet(context, a, message),
+          child: Row(
+            children: [
+              Icon(_iconForMimeType(a.mimeType)),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  a.filename,
+                  style: TextStyle(color: textColor),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const Icon(Icons.check_circle, size: 18, color: Colors.green),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // ── File still downloading or failed ──
+    return Padding(
+      padding: const EdgeInsets.only(top: 6.0),
+      child: GestureDetector(
+        onLongPress: failureCount >= 3
+            ? () => _showFileActionSheet(context, a, message)
+            : null,
+        child: Row(
+          children: [
+            Icon(
+              isDownloading
+                  ? Icons.downloading
+                  : _iconForMimeType(a.mimeType),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                isDownloading
+                    ? '${a.filename} (downloading...)'
+                    : a.filename,
+                style: TextStyle(color: textColor),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (failureCount >= 3)
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'Retry download',
+                onPressed: () async {
+                  await _controller.requestAttachmentDownload(
+                    message.id,
+                    a,
+                  );
+                },
+              )
+            else if (isDownloading)
+              const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Shows a bottom sheet with file actions (retry download, save location info).
+  void _showFileActionSheet(
+    BuildContext context,
+    ChatAttachment attachment,
+    ChatMessageViewModel message,
+  ) {
+    final isDownloaded =
+        attachment.uri.isNotEmpty && File(attachment.uri).existsSync();
+    final failureCount = _controller.downloadFailures[attachment.id] ?? 0;
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  attachment.filename,
+                  style: Theme.of(sheetContext).textTheme.titleMedium,
+                  maxLines: 1,
+                ),
+              ),
+            ),
+            if (attachment.sizeBytes > 0)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: Text(
+                  _formatFileSize(attachment.sizeBytes),
+                  style: Theme.of(sheetContext).textTheme.bodySmall,
+                ),
+              ),
+            if (isDownloaded) ...[
+              ListTile(
+                leading: const Icon(Icons.download),
+                title: const Text('Save to Downloads'),
+                onTap: () async {
+                  Navigator.pop(sheetContext);
+                  await _saveToDownloads(context, attachment);
+                },
+              ),
+            ] else ...[
+              ListTile(
+                leading: const Icon(Icons.download),
+                title: Text(
+                  failureCount >= 3 ? 'Retry download' : 'Download',
+                ),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  unawaited(
+                    _controller.requestAttachmentDownload(
+                      message.id,
+                      attachment,
+                    ),
+                  );
+                },
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _saveToDownloads(
+    BuildContext context,
+    ChatAttachment attachment,
+  ) async {
+    try {
+      const downloadsDir = '/storage/emulated/0/Download';
+      final dir = Directory(downloadsDir);
+      if (!dir.existsSync()) {
+        dir.createSync(recursive: true);
+      }
+
+      final destPath = '$downloadsDir/${attachment.filename}';
+      final destFile = File(destPath);
+
+      // If a file with the same name already exists, add a suffix.
+      var finalPath = destPath;
+      if (destFile.existsSync()) {
+        final baseName =
+            p.basenameWithoutExtension(attachment.filename);
+        final ext = p.extension(attachment.filename);
+        var counter = 1;
+        while (File(finalPath).existsSync()) {
+          finalPath = '$downloadsDir/${baseName}_($counter)$ext';
+          counter++;
+        }
+      }
+
+      await File(attachment.uri).copy(finalPath);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Saved to Downloads/${p.basename(finalPath)}'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to save: $e')),
+      );
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  /// Maps a file extension (including leading dot) to a mime type.
+  static String _mimeTypeForExtension(String ext) {
+    switch (ext) {
+      case '.png':
+        return 'image/png';
+      case '.jpg':
+      case '.jpeg':
+        return 'image/jpeg';
+      case '.gif':
+        return 'image/gif';
+      case '.webp':
+        return 'image/webp';
+      case '.heic':
+        return 'image/heic';
+      case '.mp4':
+        return 'video/mp4';
+      case '.mov':
+        return 'video/quicktime';
+      case '.avi':
+        return 'video/x-msvideo';
+      case '.mkv':
+        return 'video/x-matroska';
+      case '.pdf':
+        return 'application/pdf';
+      default:
+        return 'application/octet-stream';
+    }
   }
 }

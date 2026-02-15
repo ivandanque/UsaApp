@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/widgets/profile_avatar.dart';
+import '../widgets/fullscreen_image_viewer.dart';
+import '../widgets/inline_video_player.dart';
 
 import '../../../../app/di/app_dependencies.dart';
 import '../../data/datasources/drift_conversation_data_source.dart';
@@ -33,35 +35,52 @@ class _ConversationHistoryPageState extends State<ConversationHistoryPage> {
         if (a.mimeType.startsWith('image/') && a.uri.isNotEmpty) {
           return Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.file(
-                File(a.uri),
-                width: 160,
-                height: 120,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stack) =>
-                    const Icon(Icons.broken_image),
+            child: GestureDetector(
+              onTap: () => FullscreenImageViewer.open(
+                context,
+                file: File(a.uri),
+                heroTag: 'history_attachment_${a.id}',
+                title: a.filename,
+              ),
+              child: Hero(
+                tag: 'history_attachment_${a.id}',
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    File(a.uri),
+                    width: 160,
+                    height: 120,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stack) =>
+                        const Icon(Icons.broken_image),
+                  ),
+                ),
               ),
             ),
           );
-        } else if (a.uri.isNotEmpty) {
+        } else if (a.mimeType.startsWith('video/') && a.uri.isNotEmpty) {
           return Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
-            child: Row(
-              children: [
-                const Icon(Icons.insert_drive_file, size: 20),
-                const SizedBox(width: 6),
-                Flexible(child: Text(filename)),
-              ],
+            child: InlineVideoPlayer(
+              filePath: a.uri,
+              filename: filename,
+              maxWidth: 200,
+              maxHeight: 140,
             ),
           );
         } else {
+          final icon = a.mimeType.startsWith('video/')
+              ? Icons.videocam
+              : a.mimeType.startsWith('audio/')
+                  ? Icons.audiotrack
+                  : a.mimeType == 'application/pdf'
+                      ? Icons.picture_as_pdf
+                      : Icons.insert_drive_file;
           return Padding(
             padding: const EdgeInsets.only(top: 4, bottom: 4),
             child: Row(
               children: [
-                const Icon(Icons.insert_drive_file, size: 20),
+                Icon(icon, size: 20),
                 const SizedBox(width: 6),
                 Flexible(child: Text(filename)),
               ],

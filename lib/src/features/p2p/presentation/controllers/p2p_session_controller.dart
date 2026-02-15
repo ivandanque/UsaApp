@@ -746,6 +746,18 @@ class P2pSessionController extends ChangeNotifier {
             mimeType = 'image/jpeg';
           } else if (lower.endsWith('.gif')) {
             mimeType = 'image/gif';
+          } else if (lower.endsWith('.webp')) {
+            mimeType = 'image/webp';
+          } else if (lower.endsWith('.mp4')) {
+            mimeType = 'video/mp4';
+          } else if (lower.endsWith('.mov')) {
+            mimeType = 'video/quicktime';
+          } else if (lower.endsWith('.avi')) {
+            mimeType = 'video/x-msvideo';
+          } else if (lower.endsWith('.mkv')) {
+            mimeType = 'video/x-matroska';
+          } else if (lower.endsWith('.pdf')) {
+            mimeType = 'application/pdf';
           }
 
           // Build a ChatAttachment-shaped map so recipients can parse attachments
@@ -793,6 +805,18 @@ class P2pSessionController extends ChangeNotifier {
             mimeType = 'image/jpeg';
           } else if (lower.endsWith('.gif')) {
             mimeType = 'image/gif';
+          } else if (lower.endsWith('.webp')) {
+            mimeType = 'image/webp';
+          } else if (lower.endsWith('.mp4')) {
+            mimeType = 'video/mp4';
+          } else if (lower.endsWith('.mov')) {
+            mimeType = 'video/quicktime';
+          } else if (lower.endsWith('.avi')) {
+            mimeType = 'video/x-msvideo';
+          } else if (lower.endsWith('.mkv')) {
+            mimeType = 'video/x-matroska';
+          } else if (lower.endsWith('.pdf')) {
+            mimeType = 'application/pdf';
           }
 
           final fileMap = <String, dynamic>{
