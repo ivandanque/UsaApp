@@ -13,10 +13,25 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            val debugKeystorePath = file("debug.keystore")
+            storeFile = if (debugKeystorePath.exists()) {
+                debugKeystorePath
+            } else {
+                file("${System.getProperty("user.home")}/.android/debug.keystore")
+            }
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     defaultConfig {
@@ -32,8 +47,10 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
+            // FIXME(pre-launch): Create a dedicated release keystore before
+            // publishing to the Play Store. The debug keystore offers no
+            // tamper protection and will be rejected by the store.
+            // See: https://developer.android.com/studio/publish/app-signing
             signingConfig = signingConfigs.getByName("debug")
         }
     }
@@ -41,4 +58,8 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
