@@ -99,7 +99,7 @@ class _ChatPageState extends State<ChatPage> {
         );
       }
     };
-    
+
     _controller.onDownloadInfo = (String message) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -160,7 +160,8 @@ class _ChatPageState extends State<ChatPage> {
               onPressed: () async {
                 try {
                   final logger = const Logger('ChatPage.debug');
-                  final ds = AppDependencies.instance.driftChatMessageDataSource;
+                  final ds =
+                      AppDependencies.instance.driftChatMessageDataSource;
                   if (ds == null) {
                     logger.info('driftChatMessageDataSource is null');
                     return;
@@ -191,7 +192,8 @@ class _ChatPageState extends State<ChatPage> {
           Expanded(child: _buildMessageList()),
           SafeArea(
             top: false,
-            minimum: const EdgeInsets.all(16),
+            bottom: true,
+            minimum: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             child: _buildComposer(),
           ),
         ],
@@ -411,8 +413,7 @@ class _ChatPageState extends State<ChatPage> {
       // Create optimistic local message with attachment so UI updates immediately.
       final ext = p.extension(file.path).toLowerCase();
       final mime =
-          (info.metadata['mimeType'] as String?) ??
-          _mimeTypeForExtension(ext);
+          (info.metadata['mimeType'] as String?) ?? _mimeTypeForExtension(ext);
 
       final attachment = ChatAttachment(
         id: info.id,
@@ -481,8 +482,7 @@ class _ChatPageState extends State<ChatPage> {
       // Create optimistic local message with attachment so UI updates immediately.
       final ext = p.extension(file.path).toLowerCase();
       final mime =
-          (info.metadata['mimeType'] as String?) ??
-          _mimeTypeForExtension(ext);
+          (info.metadata['mimeType'] as String?) ?? _mimeTypeForExtension(ext);
 
       final attachment = ChatAttachment(
         id: info.id,
@@ -601,10 +601,7 @@ class _ChatPageState extends State<ChatPage> {
           child: Hero(
             tag: 'attachment_${a.id}',
             child: ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxWidth: 200,
-                maxHeight: 200,
-              ),
+              constraints: const BoxConstraints(maxWidth: 200, maxHeight: 200),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: Image.file(File(uri), fit: BoxFit.cover),
@@ -621,10 +618,7 @@ class _ChatPageState extends State<ChatPage> {
         padding: const EdgeInsets.only(top: 6.0),
         child: GestureDetector(
           onLongPress: () => _showFileActionSheet(context, a, message),
-          child: InlineVideoPlayer(
-            filePath: uri,
-            filename: a.filename,
-          ),
+          child: InlineVideoPlayer(filePath: uri, filename: a.filename),
         ),
       );
     }
@@ -664,16 +658,12 @@ class _ChatPageState extends State<ChatPage> {
         child: Row(
           children: [
             Icon(
-              isDownloading
-                  ? Icons.downloading
-                  : _iconForMimeType(a.mimeType),
+              isDownloading ? Icons.downloading : _iconForMimeType(a.mimeType),
             ),
             const SizedBox(width: 8),
             Expanded(
               child: Text(
-                isDownloading
-                    ? '${a.filename} (downloading...)'
-                    : a.filename,
+                isDownloading ? '${a.filename} (downloading...)' : a.filename,
                 style: TextStyle(color: textColor),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -684,10 +674,7 @@ class _ChatPageState extends State<ChatPage> {
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Retry download',
                 onPressed: () async {
-                  await _controller.requestAttachmentDownload(
-                    message.id,
-                    a,
-                  );
+                  await _controller.requestAttachmentDownload(message.id, a);
                 },
               )
             else if (isDownloading)
@@ -749,9 +736,7 @@ class _ChatPageState extends State<ChatPage> {
             ] else ...[
               ListTile(
                 leading: const Icon(Icons.download),
-                title: Text(
-                  failureCount >= 3 ? 'Retry download' : 'Download',
-                ),
+                title: Text(failureCount >= 3 ? 'Retry download' : 'Download'),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   unawaited(
@@ -786,8 +771,7 @@ class _ChatPageState extends State<ChatPage> {
       // If a file with the same name already exists, add a suffix.
       var finalPath = destPath;
       if (destFile.existsSync()) {
-        final baseName =
-            p.basenameWithoutExtension(attachment.filename);
+        final baseName = p.basenameWithoutExtension(attachment.filename);
         final ext = p.extension(attachment.filename);
         var counter = 1;
         while (File(finalPath).existsSync()) {
@@ -807,9 +791,9 @@ class _ChatPageState extends State<ChatPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to save: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to save: $e')));
     }
   }
 
