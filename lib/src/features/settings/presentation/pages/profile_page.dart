@@ -6,6 +6,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../../app/di/app_dependencies.dart';
 import '../../../../core/models/peer_identity.dart';
 import '../../../../core/services/peer_identity_service.dart';
+import '../../../../core/services/time_format_service.dart';
 import '../../../../core/widgets/profile_avatar.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -24,6 +25,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final _groupNameController = TextEditingController();
 
   UserRole _selectedRole = UserRole.other;
+  TimeFormatPreference _selectedTimeFormat = TimeFormatPreference.twentyFourHour;
   bool _isLoading = true;
   bool _isSaving = false;
   String? _profileImageBase64;
@@ -37,12 +39,14 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> _loadProfile() async {
     final identity = AppDependencies.instance.peerIdentity;
+    final timeFormat = AppDependencies.instance.timeFormat;
     setState(() {
       _nameController.text = identity.name ?? '';
       _displayNameController.text = identity.displayName;
       _groupNameController.text = identity.groupName ?? '';
       _profileImageBase64 = identity.profileImage;
       _selectedRole = identity.role;
+      _selectedTimeFormat = timeFormat;
       _isLoading = false;
     });
   }
@@ -151,6 +155,28 @@ class _ProfilePageState extends State<ProfilePage> {
                   if (value != null) {
                     setState(() {
                       _selectedRole = value;
+                    });
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<TimeFormatPreference>(
+                value: _selectedTimeFormat,
+                decoration: const InputDecoration(
+                  labelText: 'Time Format',
+                  helperText: 'How timestamps appear in chats',
+                  border: OutlineInputBorder(),
+                ),
+                items: TimeFormatPreference.values.map((fmt) {
+                  return DropdownMenuItem(
+                    value: fmt,
+                    child: Text(fmt.displayName),
+                  );
+                }).toList(),
+                onChanged: (value) {
+                  if (value != null) {
+                    setState(() {
+                      _selectedTimeFormat = value;
                     });
                   }
                 },
@@ -287,6 +313,9 @@ class _ProfilePageState extends State<ProfilePage> {
       await AppDependencies.instance.updatePeerDisplayName(
         _displayNameController.text,
       );
+
+      // Save time format preference
+      await AppDependencies.instance.setTimeFormat(_selectedTimeFormat);
 
       if (!mounted) return;
 

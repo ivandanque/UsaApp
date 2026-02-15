@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/chat_attachment.dart';
 import '../../../../core/database/app_database.dart';
@@ -28,16 +30,51 @@ class ChatMessageModel extends ChatMessage {
 
   factory ChatMessageModel.fromJson(Map<String, dynamic> json) {
     final sentAtRaw = json['sentAt'];
+    final sentAtMsRaw = json['sentAtMs'];
     final attachmentsRaw = json['attachments'];
+
+    // Parse sentinel timestamp with epoch-ms fallback to survive
+    // transmission corruption during P2P history sync.
+    DateTime parsedSentAt;
+    if (sentAtRaw is String) {
+      final primary = DateTime.tryParse(sentAtRaw)?.toUtc();
+      if (primary != null) {
+        parsedSentAt = primary;
+      } else {
+        debugPrint(
+          'ChatMessageModel.fromJson: DateTime.tryParse failed for '
+          'sentAt="$sentAtRaw" (msg ${json['id']}). '
+          'Trying sentAtMs fallback.',
+        );
+        if (sentAtMsRaw is num) {
+          parsedSentAt = DateTime.fromMillisecondsSinceEpoch(
+            sentAtMsRaw.toInt(),
+            isUtc: true,
+          );
+        } else {
+          debugPrint(
+            'ChatMessageModel.fromJson: No sentAtMs fallback for '
+            'msg ${json['id']}. Using DateTime.now() as last resort.',
+          );
+          parsedSentAt = DateTime.now().toUtc();
+        }
+      }
+    } else if (sentAtMsRaw is num) {
+      parsedSentAt = DateTime.fromMillisecondsSinceEpoch(
+        sentAtMsRaw.toInt(),
+        isUtc: true,
+      );
+    } else {
+      parsedSentAt = DateTime.now().toUtc();
+    }
+
     return ChatMessageModel(
       id: json['id'] as String,
       conversationId: json['conversationId'] as String,
       senderId: json['senderId'] as String,
       sender: json['sender'] as String,
       content: json['content'] as String,
-      sentAt: sentAtRaw is String
-          ? DateTime.tryParse(sentAtRaw)?.toUtc() ?? DateTime.now().toUtc()
-          : DateTime.now().toUtc(),
+      sentAt: parsedSentAt,
       attachments: attachmentsRaw is List
           ? attachmentsRaw
                 .whereType<Map<String, dynamic>>()
@@ -67,6 +104,7 @@ class ChatMessageModel extends ChatMessage {
       'sender': sender,
       'content': content,
       'sentAt': sentAt.toUtc().toIso8601String(),
+      'sentAtMs': sentAt.toUtc().millisecondsSinceEpoch,
       'attachments': attachments.map((a) => a.toJson()).toList(),
     };
   }

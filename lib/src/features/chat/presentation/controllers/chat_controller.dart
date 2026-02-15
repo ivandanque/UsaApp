@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../../../../core/models/peer_identity.dart';
 import '../../../../app/di/app_dependencies.dart';
 import '../../../../core/utils/logger.dart';
+import '../../../../core/utils/timestamp_formatter.dart';
 import '../../data/datasources/drift_conversation_data_source.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/chat_attachment.dart';
@@ -640,10 +641,10 @@ class ChatMessageViewModel {
   final PeerIdentity senderIdentity;
 
   String get sentAtFormatted {
-    final parsed = sentAt.toLocal();
-    final hours = parsed.hour.toString().padLeft(2, '0');
-    final minutes = parsed.minute.toString().padLeft(2, '0');
-    return '$hours:$minutes';
+    return TimestampFormatter.format(
+      sentAt,
+      format: AppDependencies.instance.timeFormat,
+    );
   }
 
   String get displaySender => isLocal ? 'You' : sender;

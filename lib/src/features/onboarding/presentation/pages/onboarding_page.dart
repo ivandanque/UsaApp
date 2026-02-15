@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../../../app/di/app_dependencies.dart';
 import '../../../../core/models/peer_identity.dart';
 import '../../../../core/services/onboarding_service.dart';
+import '../../../../core/services/time_format_service.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/widgets/profile_avatar.dart';
 import '../../../home/presentation/pages/home_page.dart';
@@ -36,6 +37,7 @@ class _OnboardingPageState extends State<OnboardingPage> {
   final _fullNameController = TextEditingController();
   final _groupNameController = TextEditingController();
   UserRole _selectedRole = UserRole.student;
+  TimeFormatPreference _selectedTimeFormat = TimeFormatPreference.twentyFourHour;
 
   @override
   void dispose() {
@@ -172,6 +174,9 @@ class _OnboardingPageState extends State<OnboardingPage> {
       await AppDependencies.instance.updatePeerDisplayName(
         _displayNameController.text.trim(),
       );
+
+      // Save time format preference
+      await AppDependencies.instance.setTimeFormat(_selectedTimeFormat);
 
       if (mounted) {
         Navigator.of(
@@ -345,6 +350,26 @@ class _OnboardingPageState extends State<OnboardingPage> {
             onChanged: (value) {
               if (value != null) {
                 setState(() => _selectedRole = value);
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<TimeFormatPreference>(
+            value: _selectedTimeFormat,
+            decoration: const InputDecoration(
+              labelText: 'Time Format',
+              prefixIcon: Icon(Icons.access_time),
+              border: OutlineInputBorder(),
+            ),
+            items: TimeFormatPreference.values.map((fmt) {
+              return DropdownMenuItem(
+                value: fmt,
+                child: Text(fmt.displayName),
+              );
+            }).toList(),
+            onChanged: (value) {
+              if (value != null) {
+                setState(() => _selectedTimeFormat = value);
               }
             },
           ),

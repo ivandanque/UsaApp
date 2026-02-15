@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 import '../../../../core/models/peer_identity.dart';
 import 'chat_message.dart';
 import 'chat_attachment.dart';
@@ -104,6 +106,7 @@ class ChatMessagePayload {
       'senderName': senderName,
       'content': content,
       'sentAt': sentAt.toUtc().toIso8601String(),
+      'sentAtMs': sentAt.toUtc().millisecondsSinceEpoch,
       if (senderFullName != null) 'senderFullName': senderFullName,
       if (senderRole != null) 'senderRole': senderRole,
       if (senderGroupName != null) 'senderGroupName': senderGroupName,
@@ -160,6 +163,29 @@ class ChatMessagePayload {
           decoded['senderProfileImageBase64'] as String?;
       final filesRaw = decoded['files'];
 
+      // Parse the timestamp, preferring the ISO string but falling back
+      // to the epoch-millisecond backup to survive transmission corruption.
+      final sentAtMs = decoded['sentAtMs'];
+      DateTime? parsedSentAt = DateTime.tryParse(sentAt)?.toUtc();
+      if (parsedSentAt == null) {
+        debugPrint(
+          'ChatMessagePayload.tryParse: DateTime.tryParse failed for '
+          'sentAt="$sentAt" (msg $id). Trying sentAtMs fallback.',
+        );
+        if (sentAtMs is num) {
+          parsedSentAt = DateTime.fromMillisecondsSinceEpoch(
+            sentAtMs.toInt(),
+            isUtc: true,
+          );
+        } else {
+          debugPrint(
+            'ChatMessagePayload.tryParse: No sentAtMs fallback available '
+            'for msg $id. Using DateTime.now() as last resort.',
+          );
+          parsedSentAt = DateTime.now().toUtc();
+        }
+      }
+
       return ChatMessagePayload(
         id: id,
         conversationId: conversationId,
@@ -167,7 +193,7 @@ class ChatMessagePayload {
         senderId: senderId,
         senderName: senderName,
         content: content,
-        sentAt: DateTime.tryParse(sentAt)?.toUtc() ?? DateTime.now().toUtc(),
+        sentAt: parsedSentAt,
         senderFullName: senderFullName,
         senderRole: senderRole,
         senderGroupName: senderGroupName,

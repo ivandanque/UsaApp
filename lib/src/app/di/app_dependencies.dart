@@ -7,6 +7,7 @@ import '../../core/database/app_database.dart';
 import '../../core/models/peer_identity.dart';
 import '../../core/services/chat_data_migration_service.dart';
 import '../../core/services/peer_identity_service.dart';
+import '../../core/services/time_format_service.dart';
 import '../../core/utils/logger.dart';
 import '../../features/chat/data/datasources/drift_chat_message_data_source.dart';
 import '../../features/chat/data/datasources/chat_message_query_service.dart';
@@ -56,6 +57,11 @@ class AppDependencies {
   late final LatencyProbeService _latencyProbeService;
   Map<String, PeerIdentity> _knownPeers = <String, PeerIdentity>{};
   late final SharedPreferences _sharedPreferences;
+
+  /// The user's preferred time display format (12h / 24h).
+  /// Cached in-memory so the getter never touches _sharedPreferences during
+  /// widget build in test environments where it may not yet be initialized.
+  TimeFormatPreference _timeFormat = TimeFormatPreference.twentyFourHour;
   NotificationService? _notificationService;
 
   /// Initialize dependencies.
@@ -67,6 +73,7 @@ class AppDependencies {
 
       final sharedPreferences = await SharedPreferences.getInstance();
       _sharedPreferences = sharedPreferences;
+      _timeFormat = TimeFormatService.getPreferenceSync(sharedPreferences);
 
     // Initialize database (use provided executor for tests, or default)
     if (executor != null) {
@@ -136,6 +143,7 @@ class AppDependencies {
     _p2pService = P2pService();
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
     _sharedPreferences = await SharedPreferences.getInstance();
+    _timeFormat = TimeFormatService.getPreferenceSync(_sharedPreferences);
 
     // Optionally create a lightweight in-memory DB + conversation store for
     // tests that need basic persistence without initializing message
@@ -180,6 +188,14 @@ class AppDependencies {
       _sharedPreferences.getBool(_prefBackgroundScanningEnabled) ?? false;
     int get scanCadenceSeconds =>
       _sharedPreferences.getInt(_prefScanCadenceSeconds) ?? _defaultScanCadenceSeconds;
+
+  /// The user's preferred time display format (12h / 24h).
+  TimeFormatPreference get timeFormat => _timeFormat;
+
+  Future<void> setTimeFormat(TimeFormatPreference value) async {
+    _timeFormat = value;
+    await TimeFormatService.setPreference(value);
+  }
 
   // Database and drift data sources
   AppDatabase? get database => _database;
