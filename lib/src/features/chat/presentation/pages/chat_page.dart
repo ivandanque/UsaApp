@@ -6,6 +6,7 @@ import 'package:path/path.dart' as p;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../../../app/di/app_dependencies.dart';
 import '../../../../core/models/join_request.dart';
@@ -21,6 +22,7 @@ import '../../domain/entities/conversation.dart';
 import '../controllers/chat_controller.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../widgets/inline_video_player.dart';
+import '../widgets/read_receipt_indicator.dart';
 
 class ChatPage extends StatefulWidget {
   const ChatPage({
@@ -48,9 +50,11 @@ class _ChatPageState extends State<ChatPage> {
   late final P2pSessionController _p2pController;
   late final bool _ownsP2pController;
   StreamSubscription<ChatMessagePayload>? _incomingSubscription;
+  StreamSubscription<Map<String, dynamic>>? _readReceiptSubscription;
   final ScrollController _messageScrollController = ScrollController();
   final FocusNode _composerFocusNode = FocusNode();
   int _lastMessageCount = 0;
+  Timer? _markSeenTimer;
 
   @override
   void initState() {
@@ -130,6 +134,20 @@ class _ChatPageState extends State<ChatPage> {
     // client state so that file downloads use the known-reachable IP.
     _p2pController.addListener(_syncGatewayOverride);
     _syncGatewayOverride(); // set initial value
+
+    // Wire up read receipt P2P transport.
+    _controller.onSendReadReceipt = (Map<String, dynamic> receiptJson) async {
+      await _p2pController.sendReadReceipt(receiptJson);
+    };
+    _readReceiptSubscription = _p2pController.incomingReadReceipts.listen((
+      json,
+    ) async {
+      if (!mounted) return;
+      await _controller.receiveReadReceipt(json);
+    });
+
+    // Mark currently visible messages as seen on first load.
+    _controller.addListener(_markMessagesAsSeenOnce);
   }
 
   /// Push the P2P client-state gateway IP into the [ChatController] so that
@@ -144,10 +162,37 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  /// One-shot listener: once messages are loaded, mark them seen and remove
+  /// itself. Subsequent "seen" updates happen via [_handleMessagesChanged].
+  void _markMessagesAsSeenOnce() {
+    if (_controller.hasLoadedInitial && _controller.messages.isNotEmpty) {
+      _controller.removeListener(_markMessagesAsSeenOnce);
+      _debouncedMarkSeen();
+    }
+  }
+
+  /// Debounced wrapper around [ChatController.markMessagesAsSeen].
+  ///
+  /// During rapid message arrival (e.g. history sync after a device joins)
+  /// many calls pile up quickly. Each one would broadcast a receipt for an
+  /// intermediate message; earlier broadcasts may be lost in WebSocket
+  /// congestion, leaving the remote side stuck on a stale receipt.
+  ///
+  /// By debouncing, we wait until the message list stabilises and then
+  /// broadcast **one** receipt for the absolute latest message.
+  void _debouncedMarkSeen() {
+    _markSeenTimer?.cancel();
+    _markSeenTimer = Timer(const Duration(milliseconds: 600), () {
+      unawaited(_controller.markMessagesAsSeen());
+    });
+  }
+
   @override
   void dispose() {
+    _markSeenTimer?.cancel();
     _incomingSubscription?.cancel();
     _p2pController.removeListener(_syncGatewayOverride);
+    _readReceiptSubscription?.cancel();
     _controller.removeListener(_handleMessagesChanged);
     _composerFocusNode.removeListener(_handleComposerFocusChange);
     _composerFocusNode.unfocus();
@@ -338,79 +383,111 @@ class _ChatPageState extends State<ChatPage> {
                 : scheme.onSurfaceVariant;
 
             return Padding(
+              key: ValueKey(message.id),
               padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Row(
-                mainAxisAlignment: message.isLocal
-                    ? MainAxisAlignment.end
-                    : MainAxisAlignment.start,
-                crossAxisAlignment: CrossAxisAlignment.end,
+              child: Column(
+                crossAxisAlignment: message.isLocal
+                    ? CrossAxisAlignment.end
+                    : CrossAxisAlignment.start,
                 children: [
-                  if (!message.isLocal) ...[
-                    ProfileAvatar(identity: message.senderIdentity, size: 32),
-                    const SizedBox(width: 8),
-                  ],
-                  Flexible(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: backgroundColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Text(
-                            message.displaySender,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(color: _scaledAlpha(textColor, 0.8)),
+                  Row(
+                    mainAxisAlignment: message.isLocal
+                        ? MainAxisAlignment.end
+                        : MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (!message.isLocal) ...[
+                        ProfileAvatar(
+                          identity: message.senderIdentity,
+                          size: 32,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
                           ),
-                          const SizedBox(height: 4),
-                          // Message text
-                          if (message.content.isNotEmpty) ...[
-                            Text(
-                              message.content,
-                              style: Theme.of(context).textTheme.bodyMedium
-                                  ?.copyWith(color: textColor),
-                            ),
-                            const SizedBox(height: 4),
-                          ],
+                          decoration: BoxDecoration(
+                            color: backgroundColor,
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: <Widget>[
+                              Text(
+                                message.displaySender,
+                                style: Theme.of(context).textTheme.labelSmall
+                                    ?.copyWith(
+                                      color: _scaledAlpha(textColor, 0.8),
+                                    ),
+                              ),
+                              const SizedBox(height: 4),
+                              // Message text
+                              if (message.content.isNotEmpty) ...[
+                                Text(
+                                  message.content,
+                                  style: Theme.of(context).textTheme.bodyMedium
+                                      ?.copyWith(color: textColor),
+                                ),
+                                const SizedBox(height: 4),
+                              ],
 
-                          // Attachments (images / files)
-                          if (message.attachments.isNotEmpty)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: message.attachments.map((a) {
-                                return _buildAttachmentWidget(
-                                  context,
-                                  a,
-                                  message,
-                                  textColor,
-                                );
-                              }).toList(),
-                            ),
-                          const SizedBox(height: 4),
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Text(
-                              message.sentAtFormatted,
-                              style: Theme.of(context).textTheme.labelSmall
-                                  ?.copyWith(
-                                    color: _scaledAlpha(textColor, 0.7),
-                                  ),
-                            ),
+                              // Attachments (images / files)
+                              if (message.attachments.isNotEmpty)
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: message.attachments.map((a) {
+                                    return _buildAttachmentWidget(
+                                      context,
+                                      a,
+                                      message,
+                                      textColor,
+                                    );
+                                  }).toList(),
+                                ),
+                              const SizedBox(height: 4),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: Text(
+                                  message.sentAtFormatted,
+                                  style: Theme.of(context).textTheme.labelSmall
+                                      ?.copyWith(
+                                        color: _scaledAlpha(textColor, 0.7),
+                                      ),
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
+                      ),
+                      if (message.isLocal) ...[
+                        const SizedBox(width: 8),
+                        ProfileAvatar(
+                          identity: message.senderIdentity,
+                          size: 32,
+                        ),
+                      ],
+                    ],
+                  ),
+                  // Read receipt indicators — only shown on the most recent
+                  // message each reader has seen (Messenger-style).
+                  if (_controller.latestReadReceipts.containsKey(message.id))
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: message.isLocal ? 0 : 40.0,
+                        right: message.isLocal ? 40.0 : 0,
+                      ),
+                      child: ReadReceiptIndicator(
+                        receipts: _controller.latestReadReceipts[message.id]!,
+                        localUserId: _controller.localPeerId,
+                        alignment: message.isLocal
+                            ? MainAxisAlignment.end
+                            : MainAxisAlignment.start,
                       ),
                     ),
-                  ),
-                  if (message.isLocal) ...[
-                    const SizedBox(width: 8),
-                    ProfileAvatar(identity: message.senderIdentity, size: 32),
-                  ],
                 ],
               ),
             );
@@ -458,7 +535,11 @@ class _ChatPageState extends State<ChatPage> {
       if (result == null) return;
       final path = result.files.single.path;
       if (path == null) return;
-      final file = File(path);
+
+      // Copy picked file to a permanent location so the temp/cache path
+      // can't be overwritten by subsequent picks (common on Android).
+      final file = await _copyToStableAttachmentPath(File(path));
+
       final info = await _p2pController.sendAttachment(file);
       if (info == null) {
         if (!mounted) return;
@@ -527,7 +608,11 @@ class _ChatPageState extends State<ChatPage> {
         picked = await picker.pickVideo(source: ImageSource.gallery);
       }
       if (picked == null) return;
-      final file = File(picked.path);
+
+      // Copy picked file to a permanent location so the temp/cache path
+      // can't be overwritten by subsequent picks (common on Android).
+      final file = await _copyToStableAttachmentPath(File(picked.path));
+
       final info = await _p2pController.sendAttachment(file);
       if (info == null) {
         if (!mounted) return;
@@ -584,6 +669,9 @@ class _ChatPageState extends State<ChatPage> {
     if (count != _lastMessageCount) {
       _lastMessageCount = count;
       WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+      // Mark new messages as seen whenever the list updates (debounced to
+      // avoid spamming receipts during rapid message arrival).
+      _debouncedMarkSeen();
     }
   }
 
@@ -676,7 +764,11 @@ class _ChatPageState extends State<ChatPage> {
         padding: const EdgeInsets.only(top: 6.0),
         child: GestureDetector(
           onLongPress: () => _showFileActionSheet(context, a, message),
-          child: InlineVideoPlayer(filePath: uri, filename: a.filename),
+          child: InlineVideoPlayer(
+            key: ValueKey(a.id),
+            filePath: uri,
+            filename: a.filename,
+          ),
         ),
       );
     }
@@ -862,6 +954,20 @@ class _ChatPageState extends State<ChatPage> {
       return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  /// Copies a picked file to a permanent attachments directory with a
+  /// timestamp-keyed filename so that the original temp/cache path can be
+  /// reused by subsequent picks without overwriting this file.
+  Future<File> _copyToStableAttachmentPath(File source) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final outDir = Directory('${dir.path}/attachments');
+    if (!outDir.existsSync()) outDir.createSync(recursive: true);
+
+    final ext = p.extension(source.path);
+    final stableName = '${DateTime.now().microsecondsSinceEpoch}$ext';
+    final stablePath = '${outDir.path}/$stableName';
+    return source.copy(stablePath);
   }
 
   /// Maps a file extension (including leading dot) to a mime type.

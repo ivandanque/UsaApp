@@ -10,7 +10,9 @@ import 'package:flutter_p2p_connection/flutter_p2p_connection.dart' as p2p_pkg;
 import 'package:usaapp/src/features/p2p/data/services/p2p_service.dart';
 import 'package:usaapp/src/core/services/notification_service.dart';
 
-class FakeNotificationService with WidgetsBindingObserver implements NotificationService {
+class FakeNotificationService
+    with WidgetsBindingObserver
+    implements NotificationService {
   final List<List<RoomSummary>> roomsCalls = [];
   final List<Map<String, String>> connectionCalls = [];
   final List<void> disconnectionCalls = [];

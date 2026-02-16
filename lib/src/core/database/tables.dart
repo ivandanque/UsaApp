@@ -47,6 +47,23 @@ class ChatMessages extends Table {
   Set<Column<Object>> get primaryKey => {id};
 }
 
+/// Table for message read receipts.
+///
+/// Tracks which users have seen which messages, enabling Messenger-style
+/// read receipt indicators in the chat UI.
+@DataClassName('MessageReadReceiptEntry')
+class MessageReadReceipts extends Table {
+  TextColumn get messageId => text()();
+  TextColumn get conversationId => text()();
+  TextColumn get seenByUserId => text()();
+  TextColumn get seenByDisplayName => text()();
+  TextColumn get seenByProfileImage => text().nullable()();
+  DateTimeColumn get seenAt => dateTime()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {messageId, seenByUserId};
+}
+
 /// Table for sync metadata.
 @DataClassName('SyncMetadataEntry')
 class SyncMetadata extends Table {

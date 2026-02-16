@@ -12,6 +12,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_p2p_connection/flutter_p2p_connection.dart';
 
 import '../../../chat/data/datasources/drift_chat_message_data_source.dart';
+import '../../../chat/data/datasources/drift_read_receipt_data_source.dart';
 import '../../../chat/data/models/chat_message_model.dart';
 import '../../../chat/domain/entities/chat_message_payload.dart';
 import '../../../chat/domain/entities/conversation.dart';
@@ -26,12 +27,14 @@ const String _historyMessagePrefix = '__usaapp_history_msg__:';
 const String _identityAnnouncementPrefix = '__usaapp_identity__:';
 const String _joinRequestPrefix = '__usaapp_join_request__:';
 const String _joinResponsePrefix = '__usaapp_join_response__:';
+const String _readReceiptPrefix = '__usaapp_read_receipt__:';
 
 class P2pSessionController extends ChangeNotifier {
   P2pSessionController({
     required P2pService p2pService,
     DriftConversationDataSource? conversationStore,
     DriftChatMessageDataSource? messageStore,
+    DriftReadReceiptDataSource? readReceiptStore,
     LatencyProbeService? latencyProbeService,
     NotificationService? notificationService,
     bool Function()? backgroundScanningEnabled,
@@ -39,6 +42,7 @@ class P2pSessionController extends ChangeNotifier {
   }) : _p2pService = p2pService,
        _conversationStore = conversationStore,
        _messageStore = messageStore,
+       _readReceiptStore = readReceiptStore,
        _latencyProbeService = latencyProbeService,
        _notificationService =
            notificationService ?? AppDependencies.instance.notificationService,
@@ -52,6 +56,7 @@ class P2pSessionController extends ChangeNotifier {
   final P2pService _p2pService;
   final DriftConversationDataSource? _conversationStore;
   final DriftChatMessageDataSource? _messageStore;
+  final DriftReadReceiptDataSource? _readReceiptStore;
   final LatencyProbeService? _latencyProbeService;
   final NotificationService _notificationService;
   final bool Function() _backgroundScanningEnabled;
@@ -119,6 +124,8 @@ class P2pSessionController extends ChangeNotifier {
   bool _isScanning = false;
   final StreamController<ChatMessagePayload> _incomingMessagesController =
       StreamController<ChatMessagePayload>.broadcast();
+  final StreamController<Map<String, dynamic>> _incomingReadReceiptsController =
+      StreamController<Map<String, dynamic>>.broadcast();
   bool _pendingConversationAnnouncement = false;
   Future<void>? _pendingConversationSync;
 
@@ -145,6 +152,8 @@ class P2pSessionController extends ChangeNotifier {
       List<BleDiscoveredDevice>.unmodifiable(_discoveredDevices);
   Stream<ChatMessagePayload> get incomingMessages =>
       _incomingMessagesController.stream;
+  Stream<Map<String, dynamic>> get incomingReadReceipts =>
+      _incomingReadReceiptsController.stream;
   String? get activeConversationId => _activeConversationId;
   String? get activeConversationTitle => _activeConversationTitle;
   bool get activeConversationIsPrivate => _activeConversationIsPrivate;
@@ -443,6 +452,13 @@ class P2pSessionController extends ChangeNotifier {
     return sendGroupText(payload.encode());
   }
 
+  /// Broadcast a read receipt over P2P so other peers know this user has
+  /// seen messages up to [lastSeenMessageId] in [conversationId].
+  Future<void> sendReadReceipt(Map<String, dynamic> receiptJson) async {
+    final encoded = jsonEncode(receiptJson);
+    await sendGroupText('$_readReceiptPrefix$encoded');
+  }
+
   void clearError() {
     if (_errorMessage != null) {
       _errorMessage = null;
@@ -550,6 +566,7 @@ class P2pSessionController extends ChangeNotifier {
     _clientTextSubscription?.cancel();
     _clientListSubscription?.cancel();
     unawaited(_incomingMessagesController.close());
+    unawaited(_incomingReadReceiptsController.close());
 
     // Cancel any deferred join notification timers.
     for (final entry in _pendingJoinTimers.values) {
@@ -823,8 +840,7 @@ class P2pSessionController extends ChangeNotifier {
       // point the peer has only connected at the transport level and
       // hasn't entered the password or been approved yet.
       final suppressJoinNotification =
-          _activeConversationIsPrivate &&
-          _activeConversationRequiresApproval;
+          _activeConversationIsPrivate && _activeConversationRequiresApproval;
 
       for (final id in newIds) {
         if (!_currentPeerIds.contains(id)) {
@@ -1042,6 +1058,21 @@ class P2pSessionController extends ChangeNotifier {
         } catch (_) {
           // Ignore malformed response.
         }
+      }
+      return;
+    }
+
+    // Handle incoming read receipt.
+    if (trimmed.startsWith(_readReceiptPrefix)) {
+      final jsonStr = trimmed.substring(_readReceiptPrefix.length);
+      try {
+        final decoded = jsonDecode(jsonStr);
+        if (decoded is Map<String, dynamic> &&
+            !_incomingReadReceiptsController.isClosed) {
+          _incomingReadReceiptsController.add(decoded);
+        }
+      } catch (_) {
+        // Ignore malformed read receipt packets.
       }
       return;
     }
@@ -1429,8 +1460,45 @@ class P2pSessionController extends ChangeNotifier {
       debugPrint(
         'History sync: sent ${sorted.length} message(s) to client $clientId',
       );
+
+      // Also send the host's read receipts so the joining client sees
+      // which messages the host (and any other peers) have already read.
+      await _sendReadReceiptsToClient(host, clientId, conversationId);
     } catch (e) {
       debugPrint('History sync failed: $e');
+    }
+  }
+
+  /// Send the host's stored read receipts for [conversationId] to a specific
+  /// client as part of history sync.  Uses the same `_readReceiptPrefix`
+  /// wire format so the client processes them identically to live receipts.
+  Future<void> _sendReadReceiptsToClient(
+    p2p_pkg.FlutterP2pHost host,
+    String clientId,
+    String conversationId,
+  ) async {
+    final store = _readReceiptStore;
+    if (store == null) return;
+
+    try {
+      final receipts = await store.getAllReadReceipts(conversationId);
+      if (receipts.isEmpty) return;
+
+      for (final receipt in receipts) {
+        final encoded = jsonEncode(receipt.toJson());
+        final wire = '$_readReceiptPrefix$encoded';
+        try {
+          await host.sendTextToClient(wire, clientId);
+        } catch (e) {
+          debugPrint('Receipt sync send failed: $e');
+          break;
+        }
+      }
+      debugPrint(
+        'History sync: sent ${receipts.length} read receipt(s) to client $clientId',
+      );
+    } catch (e) {
+      debugPrint('Receipt history sync failed: $e');
     }
   }
 

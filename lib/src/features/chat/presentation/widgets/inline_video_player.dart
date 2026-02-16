@@ -1,12 +1,17 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:video_thumbnail/video_thumbnail.dart' as vt;
 
 /// A self-contained inline video player widget.
 ///
-/// Displays a thumbnail-like preview with a play button. When tapped, opens
-/// a full-screen player with custom controls. Disposes controllers automatically.
+/// Displays a lightweight thumbnail placeholder with a play button. When
+/// tapped, opens a full-screen player that creates its own
+/// [VideoPlayerController]. This avoids allocating expensive native video
+/// decoders for every video visible in a chat list, preventing OOM crashes
+/// on mid-range devices.
 class InlineVideoPlayer extends StatefulWidget {
   const InlineVideoPlayer({
     super.key,
@@ -26,40 +31,62 @@ class InlineVideoPlayer extends StatefulWidget {
 }
 
 class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
-  VideoPlayerController? _videoController;
-  bool _initialized = false;
-  bool _hasError = false;
+  double? _thumbnailAspect;
+  Uint8List? _thumbnailBytes;
+  bool _thumbnailFailed = false;
 
   @override
   void initState() {
     super.initState();
-    _initController();
+    _generateThumbnail();
   }
 
-  Future<void> _initController() async {
-    final controller = VideoPlayerController.file(File(widget.filePath));
-    _videoController = controller;
+  @override
+  void didUpdateWidget(covariant InlineVideoPlayer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.filePath != widget.filePath) {
+      _thumbnailAspect = null;
+      _thumbnailBytes = null;
+      _thumbnailFailed = false;
+      _generateThumbnail();
+    }
+  }
+
+  /// Uses [video_thumbnail] to extract a JPEG thumbnail and a short-lived
+  /// [VideoPlayerController] solely to read aspect ratio.  Both are cheap
+  /// and disposed immediately, keeping native decoder lifetime minimal.
+  Future<void> _generateThumbnail() async {
+    VideoPlayerController? tempController;
     try {
-      await controller.initialize();
-      if (mounted) {
-        setState(() => _initialized = true);
-      }
+      // 1. Extract thumbnail bytes (native, no persistent decoder).
+      final bytes = await vt.VideoThumbnail.thumbnailData(
+        video: widget.filePath,
+        imageFormat: vt.ImageFormat.JPEG,
+        maxWidth: widget.maxWidth.toInt() * 2, // 2x for sharpness
+        quality: 75,
+      );
+
+      // 2. Read aspect ratio via a short-lived controller.
+      tempController = VideoPlayerController.file(File(widget.filePath));
+      await tempController.initialize();
+      final aspect = tempController.value.aspectRatio;
+      await tempController.dispose();
+      tempController = null;
+
+      if (!mounted) return;
+      setState(() {
+        _thumbnailBytes = bytes;
+        _thumbnailAspect = aspect;
+      });
     } catch (_) {
-      if (mounted) {
-        setState(() => _hasError = true);
-      }
+      await tempController?.dispose();
+      if (mounted) setState(() => _thumbnailFailed = true);
     }
   }
 
   @override
-  void dispose() {
-    _videoController?.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (_hasError) {
+    if (_thumbnailFailed) {
       return _buildPlaceholder(
         context,
         icon: Icons.broken_image,
@@ -67,7 +94,8 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
       );
     }
 
-    if (!_initialized || _videoController == null) {
+    final aspect = _thumbnailAspect;
+    if (aspect == null) {
       return _buildPlaceholder(
         context,
         icon: Icons.videocam,
@@ -75,9 +103,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
         showSpinner: true,
       );
     }
-
-    final controller = _videoController!;
-    final aspectRatio = controller.value.aspectRatio;
 
     return GestureDetector(
       onTap: () => _openFullScreenPlayer(context),
@@ -92,11 +117,15 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
             alignment: Alignment.center,
             children: [
               AspectRatio(
-                aspectRatio: aspectRatio > 0 ? aspectRatio : 16 / 9,
-                child: VideoPlayer(controller),
+                aspectRatio: aspect > 0 ? aspect : 16 / 9,
+                child: _thumbnailBytes != null
+                    ? Image.memory(
+                        _thumbnailBytes!,
+                        fit: BoxFit.cover,
+                        gaplessPlayback: true,
+                      )
+                    : Container(color: Colors.black),
               ),
-              // Dark overlay
-              Positioned.fill(child: Container(color: Colors.black38)),
               // Play button
               const Icon(Icons.play_circle_fill, size: 48, color: Colors.white),
               // Filename at bottom
@@ -110,26 +139,6 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
                     style: const TextStyle(color: Colors.white70, fontSize: 11),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              // Duration badge
-              if (controller.value.duration.inSeconds > 0)
-                Positioned(
-                  top: 6,
-                  right: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black54,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(
-                      _formatDuration(controller.value.duration),
-                      style: const TextStyle(color: Colors.white, fontSize: 11),
-                    ),
                   ),
                 ),
             ],
@@ -188,38 +197,26 @@ class _InlineVideoPlayerState extends State<InlineVideoPlayer> {
   }
 
   void _openFullScreenPlayer(BuildContext context) {
-    final controller = _videoController;
-    if (controller == null || !controller.value.isInitialized) return;
-
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => _FullScreenVideoPage(
-          videoController: controller,
+          filePath: widget.filePath,
           title: widget.filename,
         ),
       ),
     );
   }
-
-  static String _formatDuration(Duration d) {
-    final hours = d.inHours;
-    final minutes = d.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = d.inSeconds.remainder(60).toString().padLeft(2, '0');
-    if (hours > 0) {
-      return '$hours:$minutes:$seconds';
-    }
-    return '$minutes:$seconds';
-  }
 }
 
 /// Full-screen page with custom controls for a video.
+///
+/// Creates and owns its own [VideoPlayerController] — the controller is
+/// allocated when the page opens and fully disposed when it closes, so no
+/// native video decoder lives longer than this route.
 class _FullScreenVideoPage extends StatefulWidget {
-  const _FullScreenVideoPage({
-    required this.videoController,
-    required this.title,
-  });
+  const _FullScreenVideoPage({required this.filePath, required this.title});
 
-  final VideoPlayerController videoController;
+  final String filePath;
   final String title;
 
   @override
@@ -227,20 +224,39 @@ class _FullScreenVideoPage extends StatefulWidget {
 }
 
 class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
+  VideoPlayerController? _controller;
   bool _isPlaying = false;
   bool _showControls = true;
+  bool _hasError = false;
 
   @override
   void initState() {
     super.initState();
-    widget.videoController.addListener(_onVideoUpdate);
-    // Auto-play on open.
-    widget.videoController.play();
+    _initController();
+  }
+
+  Future<void> _initController() async {
+    final vc = VideoPlayerController.file(File(widget.filePath));
+    _controller = vc;
+    try {
+      await vc.initialize();
+      if (!mounted) {
+        await vc.dispose();
+        return;
+      }
+      vc.addListener(_onVideoUpdate);
+      await vc.play();
+      setState(() {});
+    } catch (_) {
+      if (mounted) setState(() => _hasError = true);
+    }
   }
 
   void _onVideoUpdate() {
     if (!mounted) return;
-    final playing = widget.videoController.value.isPlaying;
+    final vc = _controller;
+    if (vc == null) return;
+    final playing = vc.value.isPlaying;
     if (playing != _isPlaying) {
       setState(() => _isPlaying = playing);
     } else {
@@ -251,8 +267,8 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
 
   @override
   void dispose() {
-    widget.videoController.removeListener(_onVideoUpdate);
-    widget.videoController.pause();
+    _controller?.removeListener(_onVideoUpdate);
+    _controller?.dispose();
     super.dispose();
   }
 
@@ -269,7 +285,37 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
 
   @override
   Widget build(BuildContext context) {
-    final vc = widget.videoController;
+    final vc = _controller;
+
+    if (_hasError) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: Text(widget.title, style: const TextStyle(fontSize: 14)),
+        ),
+        body: const Center(
+          child: Text(
+            'Unable to play video',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      );
+    }
+
+    if (vc == null || !vc.value.isInitialized) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+          backgroundColor: Colors.black,
+          foregroundColor: Colors.white,
+          title: Text(widget.title, style: const TextStyle(fontSize: 14)),
+        ),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
+
     final value = vc.value;
     final duration = value.duration;
     final position = value.position;
@@ -314,7 +360,7 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
                         right: 0,
                         bottom: 0,
                         child: Container(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                           child: _buildControls(vc, duration, position),
                         ),
                       ),
@@ -326,23 +372,24 @@ class _FullScreenVideoPageState extends State<_FullScreenVideoPage> {
 
           // ── Portrait: video + controls centered as a group ──
           return SafeArea(
-            child: Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Video
-                  AspectRatio(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Video — use Flexible + ConstrainedBox so it shrinks
+                // when the screen is too short, preventing bottom overflow.
+                Flexible(
+                  child: AspectRatio(
                     aspectRatio: aspect,
                     child: Container(
                       color: Colors.black,
                       child: VideoPlayer(vc),
                     ),
                   ),
+                ),
 
-                  // Controls immediately below video
-                  _buildControls(vc, duration, position),
-                ],
-              ),
+                // Controls immediately below video
+                _buildControls(vc, duration, position),
+              ],
             ),
           );
         },

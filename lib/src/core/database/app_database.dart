@@ -12,14 +12,22 @@ part 'app_database.g.dart';
 ///
 /// Uses drift (SQLite) for persistent storage of chat rooms, conversations,
 /// and messages with support for reactive queries and efficient pagination.
-@DriftDatabase(tables: [ChatRooms, Conversations, ChatMessages, SyncMetadata])
+@DriftDatabase(
+  tables: [
+    ChatRooms,
+    Conversations,
+    ChatMessages,
+    MessageReadReceipts,
+    SyncMetadata,
+  ],
+)
 class AppDatabase extends _$AppDatabase {
   AppDatabase([QueryExecutor? executor]) : super(executor ?? _openConnection());
 
   final Logger _logger = const Logger('AppDatabase');
 
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration {
@@ -31,6 +39,9 @@ class AppDatabase extends _$AppDatabase {
         if (from < 2) {
           await m.addColumn(conversations, conversations.isPrivate);
           await m.addColumn(conversations, conversations.passwordHash);
+        }
+        if (from < 3) {
+          await m.createTable(messageReadReceipts);
         }
       },
     );
@@ -235,6 +246,50 @@ class AppDatabase extends _$AppDatabase {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
+  // READ RECEIPTS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Upsert a read receipt (seen-by record) for a message.
+  Future<void> upsertReadReceipt(MessageReadReceiptEntry entry) {
+    return into(messageReadReceipts).insertOnConflictUpdate(entry);
+  }
+
+  /// Watch all read receipts for a conversation (reactive).
+  Stream<List<MessageReadReceiptEntry>> watchReadReceipts(
+    String conversationId,
+  ) {
+    return (select(messageReadReceipts)
+          ..where((t) => t.conversationId.equals(conversationId))
+          ..orderBy([(t) => OrderingTerm.asc(t.seenAt)]))
+        .watch();
+  }
+
+  /// Get read receipts for a specific message.
+  Future<List<MessageReadReceiptEntry>> getReadReceiptsForMessage(
+    String messageId,
+  ) {
+    return (select(
+      messageReadReceipts,
+    )..where((t) => t.messageId.equals(messageId))).get();
+  }
+
+  /// Delete all read receipts for a conversation.
+  Future<int> clearReadReceipts(String conversationId) {
+    return (delete(
+      messageReadReceipts,
+    )..where((t) => t.conversationId.equals(conversationId))).go();
+  }
+
+  /// Get all read receipts for a conversation (non-reactive, for sync).
+  Future<List<MessageReadReceiptEntry>> getAllReadReceipts(
+    String conversationId,
+  ) {
+    return (select(
+      messageReadReceipts,
+    )..where((t) => t.conversationId.equals(conversationId))).get();
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
   // SYNC METADATA
   // ─────────────────────────────────────────────────────────────────────────
 
@@ -275,6 +330,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Clear all data (for testing or reset).
   Future<void> clearAll() async {
+    await delete(messageReadReceipts).go();
     await delete(chatMessages).go();
     await delete(conversations).go();
     await delete(chatRooms).go();

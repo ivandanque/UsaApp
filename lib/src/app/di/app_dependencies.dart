@@ -13,6 +13,7 @@ import '../../features/chat/data/datasources/drift_chat_message_data_source.dart
 import '../../features/chat/data/datasources/chat_message_query_service.dart';
 import '../../features/chat/data/datasources/drift_chat_room_data_source.dart';
 import '../../features/chat/data/datasources/drift_conversation_data_source.dart';
+import '../../features/chat/data/datasources/drift_read_receipt_data_source.dart';
 import '../../features/chat/data/repositories/chat_repository_impl.dart';
 import '../../features/chat/data/models/chat_message_model.dart';
 import '../../features/chat/domain/entities/conversation.dart';
@@ -49,6 +50,7 @@ class AppDependencies {
   ChatMessageQueryService? _chatMessageQueryService;
   DriftConversationDataSource? _driftConversationDataSource;
   DriftChatRoomDataSource? _driftChatRoomDataSource;
+  DriftReadReceiptDataSource? _driftReadReceiptDataSource;
 
   late final ChatRepository _chatRepository;
   late final SendMessage _sendMessage;
@@ -104,6 +106,7 @@ class AppDependencies {
     );
     _driftConversationDataSource = DriftConversationDataSource(_database!);
     _driftChatRoomDataSource = DriftChatRoomDataSource(_database!);
+    _driftReadReceiptDataSource = DriftReadReceiptDataSource(_database!);
 
     // Use Drift-backed data source for messaging going forward
     _chatRepository = ChatRepositoryImpl(_driftChatMessageDataSource!);
@@ -173,6 +176,7 @@ class AppDependencies {
       rememberPeer: (PeerIdentity identity) async {
         await rememberPeer(identity);
       },
+      readReceiptDataSource: _driftReadReceiptDataSource,
       knownPeers: _knownPeers,
     );
   }
@@ -217,6 +221,8 @@ class AppDependencies {
       _driftConversationDataSource;
   DriftChatRoomDataSource? get driftChatRoomDataSource =>
       _driftChatRoomDataSource;
+  DriftReadReceiptDataSource? get driftReadReceiptDataSource =>
+      _driftReadReceiptDataSource;
 
   PeerIdentity get peerIdentity => _peerIdentity;
   Map<String, PeerIdentity> get knownPeers =>
@@ -230,6 +236,7 @@ class AppDependencies {
       p2pService: _p2pService,
       conversationStore: _driftConversationDataSource,
       messageStore: _driftChatMessageDataSource,
+      readReceiptStore: _driftReadReceiptDataSource,
       latencyProbeService: _latencyProbeService,
     );
   }

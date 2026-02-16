@@ -1508,6 +1508,457 @@ class ChatMessagesCompanion extends UpdateCompanion<ChatMessageEntry> {
   }
 }
 
+class $MessageReadReceiptsTable extends MessageReadReceipts
+    with TableInfo<$MessageReadReceiptsTable, MessageReadReceiptEntry> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MessageReadReceiptsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _messageIdMeta = const VerificationMeta(
+    'messageId',
+  );
+  @override
+  late final GeneratedColumn<String> messageId = GeneratedColumn<String>(
+    'message_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _conversationIdMeta = const VerificationMeta(
+    'conversationId',
+  );
+  @override
+  late final GeneratedColumn<String> conversationId = GeneratedColumn<String>(
+    'conversation_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _seenByUserIdMeta = const VerificationMeta(
+    'seenByUserId',
+  );
+  @override
+  late final GeneratedColumn<String> seenByUserId = GeneratedColumn<String>(
+    'seen_by_user_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _seenByDisplayNameMeta = const VerificationMeta(
+    'seenByDisplayName',
+  );
+  @override
+  late final GeneratedColumn<String> seenByDisplayName =
+      GeneratedColumn<String>(
+        'seen_by_display_name',
+        aliasedName,
+        false,
+        type: DriftSqlType.string,
+        requiredDuringInsert: true,
+      );
+  static const VerificationMeta _seenByProfileImageMeta =
+      const VerificationMeta('seenByProfileImage');
+  @override
+  late final GeneratedColumn<String> seenByProfileImage =
+      GeneratedColumn<String>(
+        'seen_by_profile_image',
+        aliasedName,
+        true,
+        type: DriftSqlType.string,
+        requiredDuringInsert: false,
+      );
+  static const VerificationMeta _seenAtMeta = const VerificationMeta('seenAt');
+  @override
+  late final GeneratedColumn<DateTime> seenAt = GeneratedColumn<DateTime>(
+    'seen_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    messageId,
+    conversationId,
+    seenByUserId,
+    seenByDisplayName,
+    seenByProfileImage,
+    seenAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'message_read_receipts';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<MessageReadReceiptEntry> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('message_id')) {
+      context.handle(
+        _messageIdMeta,
+        messageId.isAcceptableOrUnknown(data['message_id']!, _messageIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_messageIdMeta);
+    }
+    if (data.containsKey('conversation_id')) {
+      context.handle(
+        _conversationIdMeta,
+        conversationId.isAcceptableOrUnknown(
+          data['conversation_id']!,
+          _conversationIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_conversationIdMeta);
+    }
+    if (data.containsKey('seen_by_user_id')) {
+      context.handle(
+        _seenByUserIdMeta,
+        seenByUserId.isAcceptableOrUnknown(
+          data['seen_by_user_id']!,
+          _seenByUserIdMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_seenByUserIdMeta);
+    }
+    if (data.containsKey('seen_by_display_name')) {
+      context.handle(
+        _seenByDisplayNameMeta,
+        seenByDisplayName.isAcceptableOrUnknown(
+          data['seen_by_display_name']!,
+          _seenByDisplayNameMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_seenByDisplayNameMeta);
+    }
+    if (data.containsKey('seen_by_profile_image')) {
+      context.handle(
+        _seenByProfileImageMeta,
+        seenByProfileImage.isAcceptableOrUnknown(
+          data['seen_by_profile_image']!,
+          _seenByProfileImageMeta,
+        ),
+      );
+    }
+    if (data.containsKey('seen_at')) {
+      context.handle(
+        _seenAtMeta,
+        seenAt.isAcceptableOrUnknown(data['seen_at']!, _seenAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_seenAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {messageId, seenByUserId};
+  @override
+  MessageReadReceiptEntry map(
+    Map<String, dynamic> data, {
+    String? tablePrefix,
+  }) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MessageReadReceiptEntry(
+      messageId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}message_id'],
+      )!,
+      conversationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}conversation_id'],
+      )!,
+      seenByUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}seen_by_user_id'],
+      )!,
+      seenByDisplayName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}seen_by_display_name'],
+      )!,
+      seenByProfileImage: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}seen_by_profile_image'],
+      ),
+      seenAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}seen_at'],
+      )!,
+    );
+  }
+
+  @override
+  $MessageReadReceiptsTable createAlias(String alias) {
+    return $MessageReadReceiptsTable(attachedDatabase, alias);
+  }
+}
+
+class MessageReadReceiptEntry extends DataClass
+    implements Insertable<MessageReadReceiptEntry> {
+  final String messageId;
+  final String conversationId;
+  final String seenByUserId;
+  final String seenByDisplayName;
+  final String? seenByProfileImage;
+  final DateTime seenAt;
+  const MessageReadReceiptEntry({
+    required this.messageId,
+    required this.conversationId,
+    required this.seenByUserId,
+    required this.seenByDisplayName,
+    this.seenByProfileImage,
+    required this.seenAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['message_id'] = Variable<String>(messageId);
+    map['conversation_id'] = Variable<String>(conversationId);
+    map['seen_by_user_id'] = Variable<String>(seenByUserId);
+    map['seen_by_display_name'] = Variable<String>(seenByDisplayName);
+    if (!nullToAbsent || seenByProfileImage != null) {
+      map['seen_by_profile_image'] = Variable<String>(seenByProfileImage);
+    }
+    map['seen_at'] = Variable<DateTime>(seenAt);
+    return map;
+  }
+
+  MessageReadReceiptsCompanion toCompanion(bool nullToAbsent) {
+    return MessageReadReceiptsCompanion(
+      messageId: Value(messageId),
+      conversationId: Value(conversationId),
+      seenByUserId: Value(seenByUserId),
+      seenByDisplayName: Value(seenByDisplayName),
+      seenByProfileImage: seenByProfileImage == null && nullToAbsent
+          ? const Value.absent()
+          : Value(seenByProfileImage),
+      seenAt: Value(seenAt),
+    );
+  }
+
+  factory MessageReadReceiptEntry.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MessageReadReceiptEntry(
+      messageId: serializer.fromJson<String>(json['messageId']),
+      conversationId: serializer.fromJson<String>(json['conversationId']),
+      seenByUserId: serializer.fromJson<String>(json['seenByUserId']),
+      seenByDisplayName: serializer.fromJson<String>(json['seenByDisplayName']),
+      seenByProfileImage: serializer.fromJson<String?>(
+        json['seenByProfileImage'],
+      ),
+      seenAt: serializer.fromJson<DateTime>(json['seenAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'messageId': serializer.toJson<String>(messageId),
+      'conversationId': serializer.toJson<String>(conversationId),
+      'seenByUserId': serializer.toJson<String>(seenByUserId),
+      'seenByDisplayName': serializer.toJson<String>(seenByDisplayName),
+      'seenByProfileImage': serializer.toJson<String?>(seenByProfileImage),
+      'seenAt': serializer.toJson<DateTime>(seenAt),
+    };
+  }
+
+  MessageReadReceiptEntry copyWith({
+    String? messageId,
+    String? conversationId,
+    String? seenByUserId,
+    String? seenByDisplayName,
+    Value<String?> seenByProfileImage = const Value.absent(),
+    DateTime? seenAt,
+  }) => MessageReadReceiptEntry(
+    messageId: messageId ?? this.messageId,
+    conversationId: conversationId ?? this.conversationId,
+    seenByUserId: seenByUserId ?? this.seenByUserId,
+    seenByDisplayName: seenByDisplayName ?? this.seenByDisplayName,
+    seenByProfileImage: seenByProfileImage.present
+        ? seenByProfileImage.value
+        : this.seenByProfileImage,
+    seenAt: seenAt ?? this.seenAt,
+  );
+  MessageReadReceiptEntry copyWithCompanion(MessageReadReceiptsCompanion data) {
+    return MessageReadReceiptEntry(
+      messageId: data.messageId.present ? data.messageId.value : this.messageId,
+      conversationId: data.conversationId.present
+          ? data.conversationId.value
+          : this.conversationId,
+      seenByUserId: data.seenByUserId.present
+          ? data.seenByUserId.value
+          : this.seenByUserId,
+      seenByDisplayName: data.seenByDisplayName.present
+          ? data.seenByDisplayName.value
+          : this.seenByDisplayName,
+      seenByProfileImage: data.seenByProfileImage.present
+          ? data.seenByProfileImage.value
+          : this.seenByProfileImage,
+      seenAt: data.seenAt.present ? data.seenAt.value : this.seenAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MessageReadReceiptEntry(')
+          ..write('messageId: $messageId, ')
+          ..write('conversationId: $conversationId, ')
+          ..write('seenByUserId: $seenByUserId, ')
+          ..write('seenByDisplayName: $seenByDisplayName, ')
+          ..write('seenByProfileImage: $seenByProfileImage, ')
+          ..write('seenAt: $seenAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    messageId,
+    conversationId,
+    seenByUserId,
+    seenByDisplayName,
+    seenByProfileImage,
+    seenAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MessageReadReceiptEntry &&
+          other.messageId == this.messageId &&
+          other.conversationId == this.conversationId &&
+          other.seenByUserId == this.seenByUserId &&
+          other.seenByDisplayName == this.seenByDisplayName &&
+          other.seenByProfileImage == this.seenByProfileImage &&
+          other.seenAt == this.seenAt);
+}
+
+class MessageReadReceiptsCompanion
+    extends UpdateCompanion<MessageReadReceiptEntry> {
+  final Value<String> messageId;
+  final Value<String> conversationId;
+  final Value<String> seenByUserId;
+  final Value<String> seenByDisplayName;
+  final Value<String?> seenByProfileImage;
+  final Value<DateTime> seenAt;
+  final Value<int> rowid;
+  const MessageReadReceiptsCompanion({
+    this.messageId = const Value.absent(),
+    this.conversationId = const Value.absent(),
+    this.seenByUserId = const Value.absent(),
+    this.seenByDisplayName = const Value.absent(),
+    this.seenByProfileImage = const Value.absent(),
+    this.seenAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  MessageReadReceiptsCompanion.insert({
+    required String messageId,
+    required String conversationId,
+    required String seenByUserId,
+    required String seenByDisplayName,
+    this.seenByProfileImage = const Value.absent(),
+    required DateTime seenAt,
+    this.rowid = const Value.absent(),
+  }) : messageId = Value(messageId),
+       conversationId = Value(conversationId),
+       seenByUserId = Value(seenByUserId),
+       seenByDisplayName = Value(seenByDisplayName),
+       seenAt = Value(seenAt);
+  static Insertable<MessageReadReceiptEntry> custom({
+    Expression<String>? messageId,
+    Expression<String>? conversationId,
+    Expression<String>? seenByUserId,
+    Expression<String>? seenByDisplayName,
+    Expression<String>? seenByProfileImage,
+    Expression<DateTime>? seenAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (messageId != null) 'message_id': messageId,
+      if (conversationId != null) 'conversation_id': conversationId,
+      if (seenByUserId != null) 'seen_by_user_id': seenByUserId,
+      if (seenByDisplayName != null) 'seen_by_display_name': seenByDisplayName,
+      if (seenByProfileImage != null)
+        'seen_by_profile_image': seenByProfileImage,
+      if (seenAt != null) 'seen_at': seenAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  MessageReadReceiptsCompanion copyWith({
+    Value<String>? messageId,
+    Value<String>? conversationId,
+    Value<String>? seenByUserId,
+    Value<String>? seenByDisplayName,
+    Value<String?>? seenByProfileImage,
+    Value<DateTime>? seenAt,
+    Value<int>? rowid,
+  }) {
+    return MessageReadReceiptsCompanion(
+      messageId: messageId ?? this.messageId,
+      conversationId: conversationId ?? this.conversationId,
+      seenByUserId: seenByUserId ?? this.seenByUserId,
+      seenByDisplayName: seenByDisplayName ?? this.seenByDisplayName,
+      seenByProfileImage: seenByProfileImage ?? this.seenByProfileImage,
+      seenAt: seenAt ?? this.seenAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (messageId.present) {
+      map['message_id'] = Variable<String>(messageId.value);
+    }
+    if (conversationId.present) {
+      map['conversation_id'] = Variable<String>(conversationId.value);
+    }
+    if (seenByUserId.present) {
+      map['seen_by_user_id'] = Variable<String>(seenByUserId.value);
+    }
+    if (seenByDisplayName.present) {
+      map['seen_by_display_name'] = Variable<String>(seenByDisplayName.value);
+    }
+    if (seenByProfileImage.present) {
+      map['seen_by_profile_image'] = Variable<String>(seenByProfileImage.value);
+    }
+    if (seenAt.present) {
+      map['seen_at'] = Variable<DateTime>(seenAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MessageReadReceiptsCompanion(')
+          ..write('messageId: $messageId, ')
+          ..write('conversationId: $conversationId, ')
+          ..write('seenByUserId: $seenByUserId, ')
+          ..write('seenByDisplayName: $seenByDisplayName, ')
+          ..write('seenByProfileImage: $seenByProfileImage, ')
+          ..write('seenAt: $seenAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 class $SyncMetadataTable extends SyncMetadata
     with TableInfo<$SyncMetadataTable, SyncMetadataEntry> {
   @override
@@ -1840,6 +2291,8 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $ChatRoomsTable chatRooms = $ChatRoomsTable(this);
   late final $ConversationsTable conversations = $ConversationsTable(this);
   late final $ChatMessagesTable chatMessages = $ChatMessagesTable(this);
+  late final $MessageReadReceiptsTable messageReadReceipts =
+      $MessageReadReceiptsTable(this);
   late final $SyncMetadataTable syncMetadata = $SyncMetadataTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
@@ -1849,6 +2302,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
     chatRooms,
     conversations,
     chatMessages,
+    messageReadReceipts,
     syncMetadata,
   ];
 }
@@ -2849,6 +3303,249 @@ typedef $$ChatMessagesTableProcessedTableManager =
       ChatMessageEntry,
       PrefetchHooks Function({bool conversationId})
     >;
+typedef $$MessageReadReceiptsTableCreateCompanionBuilder =
+    MessageReadReceiptsCompanion Function({
+      required String messageId,
+      required String conversationId,
+      required String seenByUserId,
+      required String seenByDisplayName,
+      Value<String?> seenByProfileImage,
+      required DateTime seenAt,
+      Value<int> rowid,
+    });
+typedef $$MessageReadReceiptsTableUpdateCompanionBuilder =
+    MessageReadReceiptsCompanion Function({
+      Value<String> messageId,
+      Value<String> conversationId,
+      Value<String> seenByUserId,
+      Value<String> seenByDisplayName,
+      Value<String?> seenByProfileImage,
+      Value<DateTime> seenAt,
+      Value<int> rowid,
+    });
+
+class $$MessageReadReceiptsTableFilterComposer
+    extends Composer<_$AppDatabase, $MessageReadReceiptsTable> {
+  $$MessageReadReceiptsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get messageId => $composableBuilder(
+    column: $table.messageId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get seenByUserId => $composableBuilder(
+    column: $table.seenByUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get seenByDisplayName => $composableBuilder(
+    column: $table.seenByDisplayName,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get seenByProfileImage => $composableBuilder(
+    column: $table.seenByProfileImage,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get seenAt => $composableBuilder(
+    column: $table.seenAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$MessageReadReceiptsTableOrderingComposer
+    extends Composer<_$AppDatabase, $MessageReadReceiptsTable> {
+  $$MessageReadReceiptsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get messageId => $composableBuilder(
+    column: $table.messageId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get seenByUserId => $composableBuilder(
+    column: $table.seenByUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get seenByDisplayName => $composableBuilder(
+    column: $table.seenByDisplayName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get seenByProfileImage => $composableBuilder(
+    column: $table.seenByProfileImage,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get seenAt => $composableBuilder(
+    column: $table.seenAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$MessageReadReceiptsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MessageReadReceiptsTable> {
+  $$MessageReadReceiptsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get messageId =>
+      $composableBuilder(column: $table.messageId, builder: (column) => column);
+
+  GeneratedColumn<String> get conversationId => $composableBuilder(
+    column: $table.conversationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get seenByUserId => $composableBuilder(
+    column: $table.seenByUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get seenByDisplayName => $composableBuilder(
+    column: $table.seenByDisplayName,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get seenByProfileImage => $composableBuilder(
+    column: $table.seenByProfileImage,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<DateTime> get seenAt =>
+      $composableBuilder(column: $table.seenAt, builder: (column) => column);
+}
+
+class $$MessageReadReceiptsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $MessageReadReceiptsTable,
+          MessageReadReceiptEntry,
+          $$MessageReadReceiptsTableFilterComposer,
+          $$MessageReadReceiptsTableOrderingComposer,
+          $$MessageReadReceiptsTableAnnotationComposer,
+          $$MessageReadReceiptsTableCreateCompanionBuilder,
+          $$MessageReadReceiptsTableUpdateCompanionBuilder,
+          (
+            MessageReadReceiptEntry,
+            BaseReferences<
+              _$AppDatabase,
+              $MessageReadReceiptsTable,
+              MessageReadReceiptEntry
+            >,
+          ),
+          MessageReadReceiptEntry,
+          PrefetchHooks Function()
+        > {
+  $$MessageReadReceiptsTableTableManager(
+    _$AppDatabase db,
+    $MessageReadReceiptsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MessageReadReceiptsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MessageReadReceiptsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$MessageReadReceiptsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> messageId = const Value.absent(),
+                Value<String> conversationId = const Value.absent(),
+                Value<String> seenByUserId = const Value.absent(),
+                Value<String> seenByDisplayName = const Value.absent(),
+                Value<String?> seenByProfileImage = const Value.absent(),
+                Value<DateTime> seenAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => MessageReadReceiptsCompanion(
+                messageId: messageId,
+                conversationId: conversationId,
+                seenByUserId: seenByUserId,
+                seenByDisplayName: seenByDisplayName,
+                seenByProfileImage: seenByProfileImage,
+                seenAt: seenAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String messageId,
+                required String conversationId,
+                required String seenByUserId,
+                required String seenByDisplayName,
+                Value<String?> seenByProfileImage = const Value.absent(),
+                required DateTime seenAt,
+                Value<int> rowid = const Value.absent(),
+              }) => MessageReadReceiptsCompanion.insert(
+                messageId: messageId,
+                conversationId: conversationId,
+                seenByUserId: seenByUserId,
+                seenByDisplayName: seenByDisplayName,
+                seenByProfileImage: seenByProfileImage,
+                seenAt: seenAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$MessageReadReceiptsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $MessageReadReceiptsTable,
+      MessageReadReceiptEntry,
+      $$MessageReadReceiptsTableFilterComposer,
+      $$MessageReadReceiptsTableOrderingComposer,
+      $$MessageReadReceiptsTableAnnotationComposer,
+      $$MessageReadReceiptsTableCreateCompanionBuilder,
+      $$MessageReadReceiptsTableUpdateCompanionBuilder,
+      (
+        MessageReadReceiptEntry,
+        BaseReferences<
+          _$AppDatabase,
+          $MessageReadReceiptsTable,
+          MessageReadReceiptEntry
+        >,
+      ),
+      MessageReadReceiptEntry,
+      PrefetchHooks Function()
+    >;
 typedef $$SyncMetadataTableCreateCompanionBuilder =
     SyncMetadataCompanion Function({
       required String entityId,
@@ -3048,6 +3745,8 @@ class $AppDatabaseManager {
       $$ConversationsTableTableManager(_db, _db.conversations);
   $$ChatMessagesTableTableManager get chatMessages =>
       $$ChatMessagesTableTableManager(_db, _db.chatMessages);
+  $$MessageReadReceiptsTableTableManager get messageReadReceipts =>
+      $$MessageReadReceiptsTableTableManager(_db, _db.messageReadReceipts);
   $$SyncMetadataTableTableManager get syncMetadata =>
       $$SyncMetadataTableTableManager(_db, _db.syncMetadata);
 }

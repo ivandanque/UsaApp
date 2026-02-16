@@ -10,10 +10,12 @@ import '../../../../app/di/app_dependencies.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../../core/utils/timestamp_formatter.dart';
 import '../../data/datasources/drift_conversation_data_source.dart';
+import '../../data/datasources/drift_read_receipt_data_source.dart';
 import '../../domain/entities/chat_message.dart';
 import '../../domain/entities/chat_attachment.dart';
 import '../../domain/entities/chat_message_payload.dart';
 import '../../domain/entities/conversation.dart';
+import '../../domain/entities/read_receipt.dart';
 import '../../domain/usecases/send_message.dart';
 import '../../domain/usecases/watch_messages.dart';
 
@@ -27,6 +29,7 @@ class ChatController extends ChangeNotifier {
     required Conversation conversation,
     required DriftConversationDataSource conversationStore,
     required RememberPeer rememberPeer,
+    DriftReadReceiptDataSource? readReceiptDataSource,
     Map<String, PeerIdentity>? knownPeers,
   }) : _sendMessage = sendMessage,
        _watchMessages = watchMessages,
@@ -34,6 +37,7 @@ class ChatController extends ChangeNotifier {
        _conversation = conversation,
        _conversationStore = conversationStore,
        _rememberPeer = rememberPeer,
+       _readReceiptDataSource = readReceiptDataSource,
        _knownPeers = Map<String, PeerIdentity>.from(
          knownPeers ?? <String, PeerIdentity>{},
        ) {
@@ -48,6 +52,7 @@ class ChatController extends ChangeNotifier {
   final PeerIdentity _identity;
   final DriftConversationDataSource _conversationStore;
   final RememberPeer _rememberPeer;
+  final DriftReadReceiptDataSource? _readReceiptDataSource;
   Conversation _conversation;
   final Map<String, PeerIdentity> _knownPeers;
 
@@ -79,8 +84,45 @@ class ChatController extends ChangeNotifier {
   // DB watch emission).
   final Set<String> _downloadingAttachmentIds = <String>{};
 
+  // Read receipt tracking
+  StreamSubscription<Map<String, List<ReadReceipt>>>? _readReceiptSubscription;
+
+  /// Map of messageId → list of read receipts (who has seen that message).
+  Map<String, List<ReadReceipt>> _readReceipts = <String, List<ReadReceipt>>{};
+
+  /// Callback for sending a read receipt over P2P.
+  Future<void> Function(Map<String, dynamic> receiptJson)? onSendReadReceipt;
+
   List<ChatMessageViewModel> get messages =>
       List<ChatMessageViewModel>.unmodifiable(_messages);
+
+  /// Read receipts indexed by message ID. Each entry contains the list of
+  /// users who have seen that message.
+  Map<String, List<ReadReceipt>> get readReceipts =>
+      Map<String, List<ReadReceipt>>.unmodifiable(_readReceipts);
+
+  /// Read receipts filtered so each reader's avatar appears only on the
+  /// **most recent** message they have seen. This produces Messenger-style
+  /// behaviour where indicators migrate downward as readers catch up.
+  Map<String, List<ReadReceipt>> get latestReadReceipts {
+    // Step 1: For each reader, find their latest receipt (by seenAt).
+    final latestByReader = <String, ReadReceipt>{};
+    for (final receipts in _readReceipts.values) {
+      for (final receipt in receipts) {
+        final existing = latestByReader[receipt.seenByUserId];
+        if (existing == null || receipt.seenAt.isAfter(existing.seenAt)) {
+          latestByReader[receipt.seenByUserId] = receipt;
+        }
+      }
+    }
+
+    // Step 2: Rebuild map keyed by messageId with only the "latest" entries.
+    final result = <String, List<ReadReceipt>>{};
+    for (final receipt in latestByReader.values) {
+      result.putIfAbsent(receipt.messageId, () => <ReadReceipt>[]).add(receipt);
+    }
+    return result;
+  }
 
   /// True until the first DB watch emission has been received for the
   /// current conversation. UI can use this to display a loading state.
@@ -108,6 +150,84 @@ class ChatController extends ChangeNotifier {
     // Always refresh the subscription to ensure latest messages are loaded
     _hasLoadedInitial = false;
     _subscribeToMessages();
+    _subscribeToReadReceipts();
+  }
+
+  /// Subscribe to read receipt changes from the database.
+  void _subscribeToReadReceipts() {
+    _readReceiptSubscription?.cancel();
+    final ds = _readReceiptDataSource;
+    if (ds == null) return;
+    _readReceiptSubscription = ds
+        .watchReadReceipts(_conversation.id)
+        .listen(
+          (receipts) {
+            _readReceipts = receipts;
+            notifyListeners();
+          },
+          onError: (Object error) {
+            const logTag = 'ChatController';
+            final logger = const Logger(logTag);
+            logger.info(
+              '[ChatController:$hashCode] read receipt stream error: $error',
+            );
+          },
+        );
+  }
+
+  /// Mark all visible messages in the conversation as seen by the local user.
+  /// This persists the receipts to the DB and broadcasts them over P2P.
+  Future<void> markMessagesAsSeen() async {
+    final ds = _readReceiptDataSource;
+    if (ds == null) return;
+    if (_messages.isEmpty) return;
+
+    final now = DateTime.now().toUtc();
+    // Find the absolute most-recent message (regardless of sender) that
+    // we haven't already marked as seen.  Including local messages is
+    // intentional — in Messenger-style receipts, when the other party
+    // reads the conversation their avatar should appear under YOUR latest
+    // sent message.  Skipping local messages would leave the receipt on
+    // an earlier remote message, which looks wrong from the sender's view.
+    ChatMessageViewModel? latestUnseen;
+    for (final m in _messages) {
+      final existing = _readReceipts[m.id];
+      if (existing != null &&
+          existing.any((r) => r.seenByUserId == _identity.id)) {
+        continue;
+      }
+      // _messages is ordered oldest-first, so keep overwriting to get last.
+      latestUnseen = m;
+    }
+
+    if (latestUnseen == null) return;
+
+    final receipt = ReadReceipt(
+      messageId: latestUnseen.id,
+      conversationId: _conversation.id,
+      seenByUserId: _identity.id,
+      seenByDisplayName: _identity.displayName,
+      seenByProfileImage: _identity.profileImage,
+      seenAt: now,
+    );
+    await ds.saveReadReceipt(receipt);
+    // Broadcast over P2P
+    onSendReadReceipt?.call(receipt.toJson());
+  }
+
+  /// Handle an incoming read receipt from a remote peer (received via P2P).
+  Future<void> receiveReadReceipt(Map<String, dynamic> json) async {
+    final ds = _readReceiptDataSource;
+    if (ds == null) return;
+    try {
+      final receipt = ReadReceipt.fromJson(json);
+      // Only store receipts for the current conversation.
+      if (receipt.conversationId == _conversation.id) {
+        await ds.saveReadReceipt(receipt);
+      }
+    } catch (e) {
+      debugPrint('ChatController: Failed to process read receipt: $e');
+    }
   }
 
   void _subscribeToMessages() {
@@ -461,8 +581,8 @@ class ChatController extends ChangeNotifier {
     // On some Android versions / OEM skins the host's self-reported IP
     // (from NetworkInterface enumeration) differs from the gateway IP the
     // client actually reaches via DHCP / LinkProperties routes.
-    final effectiveIp = (hostGatewayOverrideIp != null &&
-            hostGatewayOverrideIp!.isNotEmpty)
+    final effectiveIp =
+        (hostGatewayOverrideIp != null && hostGatewayOverrideIp!.isNotEmpty)
         ? hostGatewayOverrideIp!
         : hostIp;
 
@@ -505,133 +625,137 @@ class ChatController extends ChangeNotifier {
     }
 
     for (final downloadUri in urisToTry) {
-    attempts = 0;
-    while (attempts < maxAttempts) {
-      attempts++;
-      final client = http.Client();
-      try {
-        // Use a streamed request so large files (videos) are written to disk
-        // chunk-by-chunk instead of being buffered entirely in memory.
-        final request = http.Request('GET', downloadUri);
-        final streamedResponse = await client
-            .send(request)
-            .timeout(const Duration(seconds: 15));
+      attempts = 0;
+      while (attempts < maxAttempts) {
+        attempts++;
+        final client = http.Client();
+        try {
+          // Use a streamed request so large files (videos) are written to disk
+          // chunk-by-chunk instead of being buffered entirely in memory.
+          final request = http.Request('GET', downloadUri);
+          final streamedResponse = await client
+              .send(request)
+              .timeout(const Duration(seconds: 15));
 
-        if (streamedResponse.statusCode == 200) {
-          final outFile = File(localPath);
-          final sink = outFile.openWrite();
-          int bytesReceived = 0;
+          if (streamedResponse.statusCode == 200) {
+            final outFile = File(localPath);
+            final sink = outFile.openWrite();
+            int bytesReceived = 0;
 
-          try {
-            await for (final chunk in streamedResponse.stream.timeout(
-              // Allow up to 30s of inactivity between chunks; the overall
-              // download has no hard cap so large videos can complete.
-              const Duration(seconds: 30),
-            )) {
-              sink.add(chunk);
-              bytesReceived += chunk.length;
-            }
-            await sink.flush();
-            await sink.close();
-          } catch (e) {
-            await sink.close();
-            // Clean up partial file on stream failure
-            if (outFile.existsSync()) outFile.deleteSync();
-            rethrow;
-          }
-
-          debugPrint(
-            'ChatController: Successfully downloaded $bytesReceived bytes for $name',
-          );
-          debugPrint('ChatController: Saved attachment to $localPath');
-
-          // Update failure count and persist attachment URI in stored message
-          _downloadFailures.remove(fileId);
-
-          // Find message view model and update attachments list locally
-          final idx = _messages.indexWhere((m) => m.id == messageId);
-          List<ChatAttachment>? updatedAttachments;
-          if (idx != -1) {
-            final vm = _messages[idx];
-            updatedAttachments = vm.attachments.map((a) {
-              if (a.id == fileId) {
-                debugPrint(
-                  'ChatController: Updating attachment ${a.id} with local URI: $localPath',
-                );
-                return a.copyWith(uri: localPath);
+            try {
+              await for (final chunk in streamedResponse.stream.timeout(
+                // Allow up to 30s of inactivity between chunks; the overall
+                // download has no hard cap so large videos can complete.
+                const Duration(seconds: 30),
+              )) {
+                sink.add(chunk);
+                bytesReceived += chunk.length;
               }
-              return a;
-            }).toList();
-
-            // Create new ViewModel instance to trigger rebuild
-            _messages[idx] = ChatMessageViewModel(
-              id: vm.id,
-              conversationId: vm.conversationId,
-              senderId: vm.senderId,
-              sender: vm.sender,
-              content: vm.content,
-              sentAt: vm.sentAt,
-              attachments: updatedAttachments,
-              isLocal: vm.isLocal,
-              senderIdentity: vm.senderIdentity,
-            );
+              await sink.flush();
+              await sink.close();
+            } catch (e) {
+              await sink.close();
+              // Clean up partial file on stream failure
+              if (outFile.existsSync()) outFile.deleteSync();
+              rethrow;
+            }
 
             debugPrint(
-              'ChatController: Updated message ${vm.id} with new attachment list, notifying listeners',
+              'ChatController: Successfully downloaded $bytesReceived bytes for $name',
             );
-            notifyListeners();
+            debugPrint('ChatController: Saved attachment to $localPath');
 
-            // Persist updated attachment URI to DB
-            await _sendMessage(
-              SendMessageParams(
-                id: messageId,
-                conversationId: _conversation.id,
-                senderId: vmOrDefaultSenderId(messageId),
-                sender: vmOrDefaultSenderName(messageId),
-                content: vmOrDefaultContent(messageId),
+            // Update failure count and persist attachment URI in stored message
+            _downloadFailures.remove(fileId);
+
+            // Find message view model and update attachments list locally
+            final idx = _messages.indexWhere((m) => m.id == messageId);
+            List<ChatAttachment>? updatedAttachments;
+            if (idx != -1) {
+              final vm = _messages[idx];
+              updatedAttachments = vm.attachments.map((a) {
+                if (a.id == fileId) {
+                  debugPrint(
+                    'ChatController: Updating attachment ${a.id} with local URI: $localPath',
+                  );
+                  return a.copyWith(uri: localPath);
+                }
+                return a;
+              }).toList();
+
+              // Create new ViewModel instance to trigger rebuild
+              _messages[idx] = ChatMessageViewModel(
+                id: vm.id,
+                conversationId: vm.conversationId,
+                senderId: vm.senderId,
+                sender: vm.sender,
+                content: vm.content,
+                sentAt: vm.sentAt,
                 attachments: updatedAttachments,
-                attachmentsAreExternal: true,
-              ),
-            );
-          }
+                isLocal: vm.isLocal,
+                senderIdentity: vm.senderIdentity,
+              );
 
-          return;
-        } else {
-          // treat as failure and retry
+              debugPrint(
+                'ChatController: Updated message ${vm.id} with new attachment list, notifying listeners',
+              );
+              notifyListeners();
+
+              // Persist updated attachment URI to DB.
+              // Preserve the original sentAt so message ordering stays
+              // chronological — without this, the timestamp defaults to
+              // DateTime.now() and large-file downloads shift to the end.
+              await _sendMessage(
+                SendMessageParams(
+                  id: messageId,
+                  conversationId: _conversation.id,
+                  senderId: vmOrDefaultSenderId(messageId),
+                  sender: vmOrDefaultSenderName(messageId),
+                  content: vmOrDefaultContent(messageId),
+                  sentAt: vm.sentAt,
+                  attachments: updatedAttachments,
+                  attachmentsAreExternal: true,
+                ),
+              );
+            }
+
+            return;
+          } else {
+            // treat as failure and retry
+            debugPrint(
+              'ChatController: Download failed for $name - status ${streamedResponse.statusCode}',
+            );
+            _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
+          }
+        } catch (e) {
           debugPrint(
-            'ChatController: Download failed for $name - status ${streamedResponse.statusCode}',
+            'ChatController: Download error for $name (attempt $attempts/$maxAttempts): $e',
           );
           _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
+        } finally {
+          client.close();
         }
-      } catch (e) {
-        debugPrint(
-          'ChatController: Download error for $name (attempt $attempts/$maxAttempts): $e',
-        );
-        _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
-      } finally {
-        client.close();
+
+        // small backoff
+        await Future<void>.delayed(Duration(milliseconds: 400 * attempts));
       }
 
-      // small backoff
-      await Future<void>.delayed(Duration(milliseconds: 400 * attempts));
-    }
+      // If there are more URIs to try (fallback IP), log and continue the
+      // outer for-loop instead of giving up immediately.
+      if (downloadUri != urisToTry.last) {
+        debugPrint(
+          'ChatController: Retrying $name with fallback URI ${urisToTry.last}',
+        );
+        continue;
+      }
 
-    // If there are more URIs to try (fallback IP), log and continue the
-    // outer for-loop instead of giving up immediately.
-    if (downloadUri != urisToTry.last) {
       debugPrint(
-        'ChatController: Retrying $name with fallback URI ${urisToTry.last}',
+        'ChatController: Failed to download $name after exhausting all IPs',
       );
-      continue;
-    }
-
-    debugPrint(
-      'ChatController: Failed to download $name after exhausting all IPs',
-    );
-    onDownloadError?.call('Failed to download $name. Tap retry button.');
-    // After max attempts, leave failure count which UI can use to show manual refresh
-    notifyListeners(); // Refresh UI to show retry button
-    return;
+      onDownloadError?.call('Failed to download $name. Tap retry button.');
+      // After max attempts, leave failure count which UI can use to show manual refresh
+      notifyListeners(); // Refresh UI to show retry button
+      return;
     } // end for (urisToTry)
   }
 
@@ -664,6 +788,8 @@ class ChatController extends ChangeNotifier {
     // subscriber — which causes the "Loading messages..." hang.
     _subscription?.cancel();
     _subscription = null;
+    _readReceiptSubscription?.cancel();
+    _readReceiptSubscription = null;
     super.dispose();
   }
 }
