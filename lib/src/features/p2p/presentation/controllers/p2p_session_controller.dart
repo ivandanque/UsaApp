@@ -339,6 +339,7 @@ class P2pSessionController extends ChangeNotifier {
         await _scanSubscription?.cancel();
         _scanSubscription = null;
         _isScanning = false;
+        unawaited(_notificationService.cancelScanningNotification());
         notifyListeners();
       }
 
@@ -563,6 +564,7 @@ class P2pSessionController extends ChangeNotifier {
 
     _cancelNotificationTimer();
     unawaited(_flushRoomNotifications());
+    unawaited(_notificationService.cancelScanningNotification());
 
     super.dispose();
   }

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:usaapp/src/app/di/app_dependencies.dart';
 import 'package:usaapp/src/features/p2p/presentation/controllers/p2p_session_controller.dart';
@@ -9,7 +10,7 @@ import 'package:flutter_p2p_connection/flutter_p2p_connection.dart' as p2p_pkg;
 import 'package:usaapp/src/features/p2p/data/services/p2p_service.dart';
 import 'package:usaapp/src/core/services/notification_service.dart';
 
-class FakeNotificationService implements NotificationService {
+class FakeNotificationService with WidgetsBindingObserver implements NotificationService {
   final List<List<RoomSummary>> roomsCalls = [];
   final List<Map<String, String>> connectionCalls = [];
   final List<void> disconnectionCalls = [];
@@ -73,6 +74,12 @@ class FakeNotificationService implements NotificationService {
 
   @override
   bool Function() vibrationEnabled = () => true;
+
+  @override
+  Future<void> cancelAllOngoingNotifications() async {}
+
+  @override
+  void dispose() {}
 }
 
 class FakeClient implements p2p_pkg.FlutterP2pClient {

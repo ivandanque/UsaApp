@@ -79,7 +79,7 @@ class _FlutterLocalNotificationsAdapter implements NotificationPlugin {
   }
 }
 
-class NotificationService {
+class NotificationService with WidgetsBindingObserver {
   NotificationService({required FlutterLocalNotificationsPlugin plugin})
     : _plugin = _FlutterLocalNotificationsAdapter(plugin);
 
@@ -149,6 +149,14 @@ class NotificationService {
     );
 
     _initialized = true;
+
+    // Listen for app lifecycle to cancel ongoing notifications when
+    // the app is killed or moved to the detached state.
+    try {
+      WidgetsBinding.instance.addObserver(this);
+    } catch (_) {
+      // Binding may not be initialised in unit-test environments.
+    }
 
     if (requestPermissions) {
       await requestPermissionIfNeeded();
@@ -370,6 +378,33 @@ class NotificationService {
       // No payload — these notifications are informational only and
       // should not navigate anywhere when tapped.
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // App lifecycle — cancel ongoing notifications when the app is destroyed
+  // ---------------------------------------------------------------------------
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      cancelAllOngoingNotifications();
+    }
+  }
+
+  /// Cancels all ongoing/persistent notifications (e.g. scanning) so they
+  /// don't linger after the app is closed or destroyed by the OS.
+  Future<void> cancelAllOngoingNotifications() async {
+    await cancelScanningNotification();
+  }
+
+  /// Removes the lifecycle observer.  Call when the service is no longer
+  /// needed (e.g. in integration tests).
+  void dispose() {
+    try {
+      WidgetsBinding.instance.removeObserver(this);
+    } catch (_) {
+      // Binding may not be initialised in unit-test environments.
+    }
   }
 
   // ---------------------------------------------------------------------------
