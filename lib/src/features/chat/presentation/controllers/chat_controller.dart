@@ -459,25 +459,51 @@ class ChatController extends ChangeNotifier {
 
     onDownloadInfo?.call('Downloading $name...');
 
+    // Prepare output path up-front so partial files can be cleaned up.
+    final dir = await getApplicationDocumentsDirectory();
+    final outDir = Directory('${dir.path}/attachments');
+    if (!outDir.existsSync()) outDir.createSync(recursive: true);
+    final localPath = '${outDir.path}/$fileId-${Uri.encodeComponent(name)}';
+
     int attempts = 0;
     const maxAttempts = 3;
     while (attempts < maxAttempts) {
       attempts++;
+      final client = http.Client();
       try {
-        final resp = await http.get(uri).timeout(const Duration(seconds: 10));
-        if (resp.statusCode == 200) {
-          debugPrint(
-            'ChatController: Successfully downloaded ${resp.bodyBytes.length} bytes for $name',
-          );
-          // write to permanent app storage
-          final dir = await getApplicationDocumentsDirectory();
-          final outDir = Directory('${dir.path}/attachments');
-          if (!outDir.existsSync()) outDir.createSync(recursive: true);
-          final localPath =
-              '${outDir.path}/$fileId-${Uri.encodeComponent(name)}';
-          final outFile = File(localPath);
-          await outFile.writeAsBytes(resp.bodyBytes, flush: true);
+        // Use a streamed request so large files (videos) are written to disk
+        // chunk-by-chunk instead of being buffered entirely in memory.
+        final request = http.Request('GET', uri);
+        final streamedResponse = await client
+            .send(request)
+            .timeout(const Duration(seconds: 15));
 
+        if (streamedResponse.statusCode == 200) {
+          final outFile = File(localPath);
+          final sink = outFile.openWrite();
+          int bytesReceived = 0;
+
+          try {
+            await for (final chunk in streamedResponse.stream.timeout(
+              // Allow up to 30s of inactivity between chunks; the overall
+              // download has no hard cap so large videos can complete.
+              const Duration(seconds: 30),
+            )) {
+              sink.add(chunk);
+              bytesReceived += chunk.length;
+            }
+            await sink.flush();
+            await sink.close();
+          } catch (e) {
+            await sink.close();
+            // Clean up partial file on stream failure
+            if (outFile.existsSync()) outFile.deleteSync();
+            rethrow;
+          }
+
+          debugPrint(
+            'ChatController: Successfully downloaded $bytesReceived bytes for $name',
+          );
           debugPrint('ChatController: Saved attachment to $localPath');
 
           // Update failure count and persist attachment URI in stored message
@@ -534,7 +560,7 @@ class ChatController extends ChangeNotifier {
         } else {
           // treat as failure and retry
           debugPrint(
-            'ChatController: Download failed for $name - status ${resp.statusCode}',
+            'ChatController: Download failed for $name - status ${streamedResponse.statusCode}',
           );
           _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
         }
@@ -543,6 +569,8 @@ class ChatController extends ChangeNotifier {
           'ChatController: Download error for $name (attempt $attempts/$maxAttempts): $e',
         );
         _downloadFailures[fileId] = (_downloadFailures[fileId] ?? 0) + 1;
+      } finally {
+        client.close();
       }
 
       // small backoff
