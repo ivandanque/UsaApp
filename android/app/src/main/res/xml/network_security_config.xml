@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Allows cleartext HTTP for P2P attachment download. The app's file transfer
+  is only to peer-advertised IPs on the local hotspot (e.g. 192.168.49.x).
+  Without this, Android 9+ blocks outbound HTTP, so the joining device (client)
+  cannot download images when the host is on a newer OS (see BUG.md ISSUE 1).
+-->
+<network-security-config>
+  <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

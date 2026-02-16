@@ -410,6 +410,10 @@ class ChatController extends ChangeNotifier {
     String messageId,
     ChatAttachment attachment,
   ) async {
+    // Reset failure count so UI shows the downloading spinner during retry
+    _downloadFailures.remove(attachment.id);
+    notifyListeners();
+
     if (attachment.senderHostIp == null || attachment.senderPort == null) {
       // Try to retrieve transport info from pending map
       final pendingInfo = _pendingFileInfos[attachment.id];

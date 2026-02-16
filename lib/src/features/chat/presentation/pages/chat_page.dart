@@ -90,6 +90,8 @@ class _ChatPageState extends State<ChatPage> {
           SnackBar(
             content: Text(message),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 60, left: 16, right: 16),
             action: SnackBarAction(
               label: 'OK',
               textColor: Colors.white,
@@ -105,6 +107,8 @@ class _ChatPageState extends State<ChatPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(message),
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.only(bottom: 60, left: 16, right: 16),
             duration: const Duration(seconds: 2),
           ),
         );
