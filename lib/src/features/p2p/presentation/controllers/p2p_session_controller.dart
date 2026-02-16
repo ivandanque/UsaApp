@@ -16,6 +16,7 @@ import '../../../chat/data/models/chat_message_model.dart';
 import '../../../chat/domain/entities/chat_message_payload.dart';
 import '../../../chat/domain/entities/conversation.dart';
 import '../../../chat/data/datasources/drift_conversation_data_source.dart';
+import '../../../../core/models/join_request.dart';
 import '../../data/services/p2p_service.dart';
 import '../../data/services/latency_probe_service.dart';
 
@@ -23,6 +24,8 @@ const String _conversationAnnouncementPrefix = '__usaapp_conversation__:';
 const String _conversationRequestMessage = '__usaapp_request_conversation__';
 const String _historyMessagePrefix = '__usaapp_history_msg__:';
 const String _identityAnnouncementPrefix = '__usaapp_identity__:';
+const String _joinRequestPrefix = '__usaapp_join_request__:';
+const String _joinResponsePrefix = '__usaapp_join_response__:';
 
 class P2pSessionController extends ChangeNotifier {
   P2pSessionController({
@@ -67,6 +70,14 @@ class P2pSessionController extends ChangeNotifier {
   String? _activeConversationTitle;
   bool _activeConversationIsPrivate = false;
   String? _activeConversationPasswordHash;
+  bool _activeConversationRequiresApproval = false;
+
+  /// Pending join requests that the **host** has not yet approved or denied.
+  final List<JoinRequest> _pendingJoinRequests = <JoinRequest>[];
+
+  /// The join approval status for the **client** (set after sending a
+  /// join request and receiving a response from the host).
+  JoinApprovalStatus? _joinApprovalStatus;
 
   HotspotHostState? _hostState;
   HotspotClientState? _clientState;
@@ -138,6 +149,11 @@ class P2pSessionController extends ChangeNotifier {
   String? get activeConversationTitle => _activeConversationTitle;
   bool get activeConversationIsPrivate => _activeConversationIsPrivate;
   String? get activeConversationPasswordHash => _activeConversationPasswordHash;
+  bool get activeConversationRequiresApproval =>
+      _activeConversationRequiresApproval;
+  List<JoinRequest> get pendingJoinRequests =>
+      List<JoinRequest>.unmodifiable(_pendingJoinRequests);
+  JoinApprovalStatus? get joinApprovalStatus => _joinApprovalStatus;
 
   /// Verify if a password matches the active conversation's password hash.
   bool verifyPassword(String password) {
@@ -172,11 +188,13 @@ class P2pSessionController extends ChangeNotifier {
     Conversation conversation, {
     bool isPrivate = false,
     String? passwordHash,
+    bool requiresApproval = false,
   }) {
     _activeConversationId = conversation.id;
     _activeConversationTitle = conversation.title;
     _activeConversationIsPrivate = isPrivate;
     _activeConversationPasswordHash = passwordHash;
+    _activeConversationRequiresApproval = isPrivate && requiresApproval;
     _ensureConversationSynced(
       id: conversation.id,
       title: conversation.title,
@@ -428,6 +446,97 @@ class P2pSessionController extends ChangeNotifier {
     if (_errorMessage != null) {
       _errorMessage = null;
       notifyListeners();
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // JOIN REQUEST / APPROVAL
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Called by the **client** to send a join request to the host after the
+  /// password has been verified locally for a private conversation with
+  /// `requiresApproval` enabled.
+  Future<void> sendJoinRequest() async {
+    if (_role != P2pSessionRole.client) return;
+
+    _joinApprovalStatus = JoinApprovalStatus.pending;
+    notifyListeners();
+
+    final localIdentity = AppDependencies.instance.peerIdentity;
+    final payload = jsonEncode(<String, dynamic>{
+      'peerId': localIdentity.id,
+      'displayName': localIdentity.displayName,
+      if (localIdentity.name != null) 'fullName': localIdentity.name,
+      if (localIdentity.profileImage != null)
+        'profileImage': localIdentity.profileImage,
+      if (localIdentity.groupName != null) 'groupName': localIdentity.groupName,
+      'role': localIdentity.role.name,
+      'requestedAt': DateTime.now().toUtc().toIso8601String(),
+    });
+    final message = '$_joinRequestPrefix$payload';
+
+    try {
+      final client = await _p2pService.ensureClientInitialized();
+      await client.broadcastText(message);
+    } catch (e) {
+      debugPrint('Failed to send join request: $e');
+    }
+  }
+
+  /// Called by the **client** to cancel a pending join request.
+  void cancelJoinRequest() {
+    _joinApprovalStatus = null;
+    notifyListeners();
+  }
+
+  /// Called by the **host** to approve a pending join request.
+  Future<void> approveJoinRequest(JoinRequest request) async {
+    _pendingJoinRequests.removeWhere((r) => r.peerId == request.peerId);
+    notifyListeners();
+
+    final response = jsonEncode(<String, dynamic>{
+      'peerId': request.peerId,
+      'approved': true,
+    });
+    final message = '$_joinResponsePrefix$response';
+
+    try {
+      final host = await _p2pService.ensureHostInitialized();
+      await host.sendTextToClient(message, request.transportClientId);
+    } catch (e) {
+      debugPrint('Failed to send join approval: $e');
+    }
+
+    // Fire the "joined" notification that was suppressed during transport
+    // connect because the conversation requires approval.
+    final resolved = _resolveTransportPeerInfo(
+      request.transportClientId,
+      fallbackUsername: request.displayName,
+    );
+    unawaited(
+      _notificationService.notifyPeerJoined(
+        resolved.displayName,
+        profileImageBase64: resolved.profileImage,
+      ),
+    );
+  }
+
+  /// Called by the **host** to deny a pending join request.
+  Future<void> denyJoinRequest(JoinRequest request) async {
+    _pendingJoinRequests.removeWhere((r) => r.peerId == request.peerId);
+    notifyListeners();
+
+    final response = jsonEncode(<String, dynamic>{
+      'peerId': request.peerId,
+      'approved': false,
+    });
+    final message = '$_joinResponsePrefix$response';
+
+    try {
+      final host = await _p2pService.ensureHostInitialized();
+      await host.sendTextToClient(message, request.transportClientId);
+    } catch (e) {
+      debugPrint('Failed to send join denial: $e');
     }
   }
 
@@ -705,6 +814,16 @@ class P2pSessionController extends ChangeNotifier {
       // Detect peers that joined or rejoined.
       // Defer the notification briefly (2s) to allow the identity
       // announcement message to arrive so the profile image can be shown.
+      //
+      // When the active conversation is private and requires approval,
+      // suppress join/rejoin notifications here — they will be shown
+      // when the host explicitly approves the join request.  At this
+      // point the peer has only connected at the transport level and
+      // hasn't entered the password or been approved yet.
+      final suppressJoinNotification =
+          _activeConversationIsPrivate &&
+          _activeConversationRequiresApproval;
+
       for (final id in newIds) {
         if (!_currentPeerIds.contains(id)) {
           final info = clientMap[id];
@@ -716,6 +835,8 @@ class P2pSessionController extends ChangeNotifier {
               () => (displayName: info.username, profileImage: null),
             );
           }
+
+          if (suppressJoinNotification) continue;
 
           final isRejoin = _everSeenPeerIds.contains(id);
 
@@ -878,6 +999,51 @@ class P2pSessionController extends ChangeNotifier {
       return;
     }
 
+    // Handle join request (host-side): a client is asking to join a
+    // private conversation that requires approval.
+    if (trimmed.startsWith(_joinRequestPrefix)) {
+      if (_role == P2pSessionRole.host && senderId != null) {
+        final jsonStr = trimmed.substring(_joinRequestPrefix.length);
+        final request = JoinRequest.tryParse(
+          jsonStr,
+          transportClientId: senderId,
+        );
+        if (request != null) {
+          // Avoid duplicate requests from the same peer.
+          final alreadyPending = _pendingJoinRequests.any(
+            (r) => r.peerId == request.peerId,
+          );
+          if (!alreadyPending) {
+            _pendingJoinRequests.add(request);
+            notifyListeners();
+          }
+        }
+      }
+      return;
+    }
+
+    // Handle join response (client-side): the host approved or denied
+    // our join request.
+    if (trimmed.startsWith(_joinResponsePrefix)) {
+      if (_role == P2pSessionRole.client) {
+        try {
+          final decoded = jsonDecode(
+            trimmed.substring(_joinResponsePrefix.length),
+          );
+          if (decoded is Map<String, dynamic>) {
+            final approved = decoded['approved'] == true;
+            _joinApprovalStatus = approved
+                ? JoinApprovalStatus.approved
+                : JoinApprovalStatus.denied;
+            notifyListeners();
+          }
+        } catch (_) {
+          // Ignore malformed response.
+        }
+      }
+      return;
+    }
+
     if (trimmed == _conversationRequestMessage) {
       if (_role == P2pSessionRole.host) {
         _pendingConversationAnnouncement = true;
@@ -914,6 +1080,8 @@ class P2pSessionController extends ChangeNotifier {
             _activeConversationPasswordHash = hash is String && hash.isNotEmpty
                 ? hash
                 : null;
+            _activeConversationRequiresApproval =
+                decoded['requiresApproval'] == true;
             _ensureConversationSynced(id: conversationId, title: title);
             notifyListeners();
           }
@@ -1014,6 +1182,7 @@ class P2pSessionController extends ChangeNotifier {
       'isPrivate': _activeConversationIsPrivate,
       if (_activeConversationPasswordHash != null)
         'passwordHash': _activeConversationPasswordHash,
+      'requiresApproval': _activeConversationRequiresApproval,
       'at': DateTime.now().toUtc().toIso8601String(),
     });
     final message = '$_conversationAnnouncementPrefix$metadata';

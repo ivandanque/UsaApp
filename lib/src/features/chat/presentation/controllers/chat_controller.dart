@@ -57,6 +57,14 @@ class ChatController extends ChangeNotifier {
   /// Optional callback to show info messages to user
   void Function(String message)? onDownloadInfo;
 
+  /// When this device is a **client**, set this to the gateway IP reported by
+  /// `HotspotClientState.hostGatewayIpAddress`.  The file-download logic will
+  /// prefer this IP over the host's self-reported `senderHostIp` because the
+  /// two can diverge on certain Android versions / OEM skins (e.g. Samsung
+  /// Android 16).  The gateway IP is the one the WebSocket already routes
+  /// through, so it is always reachable from the client.
+  String? hostGatewayOverrideIp;
+
   final TextEditingController messageFieldController = TextEditingController();
 
   StreamSubscription<List<ChatMessage>>? _subscription;
@@ -449,8 +457,23 @@ class ChatController extends ChangeNotifier {
       return;
     }
 
+    // Prefer the gateway IP that the WebSocket successfully routes through.
+    // On some Android versions / OEM skins the host's self-reported IP
+    // (from NetworkInterface enumeration) differs from the gateway IP the
+    // client actually reaches via DHCP / LinkProperties routes.
+    final effectiveIp = (hostGatewayOverrideIp != null &&
+            hostGatewayOverrideIp!.isNotEmpty)
+        ? hostGatewayOverrideIp!
+        : hostIp;
+
+    if (effectiveIp != hostIp) {
+      debugPrint(
+        'ChatController: Overriding senderHostIp $hostIp → gateway $effectiveIp',
+      );
+    }
+
     final uri = Uri.parse(
-      'http://$hostIp:$port/file?id=${Uri.encodeComponent(fileId)}',
+      'http://$effectiveIp:$port/file?id=${Uri.encodeComponent(fileId)}',
     );
 
     debugPrint(
@@ -467,13 +490,29 @@ class ChatController extends ChangeNotifier {
 
     int attempts = 0;
     const maxAttempts = 3;
+
+    // Build a list of URIs to try. The primary URI uses the effective IP
+    // (gateway override when available).  If that differs from the host's
+    // self-reported IP, append a fallback URI with the original IP so we
+    // cover both cases.
+    final urisToTry = <Uri>[uri];
+    if (effectiveIp != hostIp) {
+      urisToTry.add(
+        Uri.parse(
+          'http://$hostIp:$port/file?id=${Uri.encodeComponent(fileId)}',
+        ),
+      );
+    }
+
+    for (final downloadUri in urisToTry) {
+    attempts = 0;
     while (attempts < maxAttempts) {
       attempts++;
       final client = http.Client();
       try {
         // Use a streamed request so large files (videos) are written to disk
         // chunk-by-chunk instead of being buffered entirely in memory.
-        final request = http.Request('GET', uri);
+        final request = http.Request('GET', downloadUri);
         final streamedResponse = await client
             .send(request)
             .timeout(const Duration(seconds: 15));
@@ -577,13 +616,23 @@ class ChatController extends ChangeNotifier {
       await Future<void>.delayed(Duration(milliseconds: 400 * attempts));
     }
 
+    // If there are more URIs to try (fallback IP), log and continue the
+    // outer for-loop instead of giving up immediately.
+    if (downloadUri != urisToTry.last) {
+      debugPrint(
+        'ChatController: Retrying $name with fallback URI ${urisToTry.last}',
+      );
+      continue;
+    }
+
     debugPrint(
-      'ChatController: Failed to download $name after $maxAttempts attempts',
+      'ChatController: Failed to download $name after exhausting all IPs',
     );
     onDownloadError?.call('Failed to download $name. Tap retry button.');
     // After max attempts, leave failure count which UI can use to show manual refresh
     notifyListeners(); // Refresh UI to show retry button
     return;
+    } // end for (urisToTry)
   }
 
   String vmOrDefaultSenderId(String messageId) {

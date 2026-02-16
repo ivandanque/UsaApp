@@ -34,12 +34,14 @@ class FakeP2pSessionController extends P2pSessionController {
     Conversation conversation, {
     bool isPrivate = false,
     String? passwordHash,
+    bool requiresApproval = false,
   }) {
     // Keep behavior minimal for tests but still record active convo via base impl.
     super.setActiveConversation(
       conversation,
       isPrivate: isPrivate,
       passwordHash: passwordHash,
+      requiresApproval: requiresApproval,
     );
   }
 

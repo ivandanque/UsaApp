@@ -8,6 +8,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../../../app/di/app_dependencies.dart';
+import '../../../../core/models/join_request.dart';
+import '../../../../core/models/peer_identity.dart';
 import '../../../../core/widgets/profile_avatar.dart';
 import '../../../../core/utils/logger.dart';
 import '../../../p2p/data/services/p2p_service.dart';
@@ -16,7 +18,6 @@ import '../../domain/entities/chat_attachment.dart';
 import '../../../p2p/presentation/widgets/latency_diagnostics_sheet.dart';
 import '../../domain/entities/chat_message_payload.dart';
 import '../../domain/entities/conversation.dart';
-import '../../../../core/models/peer_identity.dart';
 import '../controllers/chat_controller.dart';
 import '../widgets/fullscreen_image_viewer.dart';
 import '../widgets/inline_video_player.dart';
@@ -76,6 +77,7 @@ class _ChatPageState extends State<ChatPage> {
         widget.conversation,
         isPrivate: _p2pController.activeConversationIsPrivate,
         passwordHash: _p2pController.activeConversationPasswordHash,
+        requiresApproval: _p2pController.activeConversationRequiresApproval,
       );
     });
     unawaited(_controller.start());
@@ -123,11 +125,29 @@ class _ChatPageState extends State<ChatPage> {
       }
       await _controller.receivePayload(payload);
     });
+
+    // Keep the chat controller's gateway‑IP override in sync with the P2P
+    // client state so that file downloads use the known-reachable IP.
+    _p2pController.addListener(_syncGatewayOverride);
+    _syncGatewayOverride(); // set initial value
+  }
+
+  /// Push the P2P client-state gateway IP into the [ChatController] so that
+  /// file downloads use the known-reachable IP instead of the host's
+  /// self-reported IP (which can differ on certain Android versions).
+  void _syncGatewayOverride() {
+    if (_p2pController.role == P2pSessionRole.client) {
+      _controller.hostGatewayOverrideIp =
+          _p2pController.clientState?.hostGatewayIpAddress;
+    } else {
+      _controller.hostGatewayOverrideIp = null;
+    }
   }
 
   @override
   void dispose() {
     _incomingSubscription?.cancel();
+    _p2pController.removeListener(_syncGatewayOverride);
     _controller.removeListener(_handleMessagesChanged);
     _composerFocusNode.removeListener(_handleComposerFocusChange);
     _composerFocusNode.unfocus();
@@ -193,6 +213,7 @@ class _ChatPageState extends State<ChatPage> {
       body: Column(
         children: <Widget>[
           _buildConnectionBanner(),
+          _buildJoinRequestBanners(),
           Expanded(child: _buildMessageList()),
           SafeArea(
             top: false,
@@ -254,6 +275,39 @@ class _ChatPageState extends State<ChatPage> {
               subtitle: Text(subtitle),
             ),
           ),
+        );
+      },
+    );
+  }
+
+  /// Non-blocking banners shown to the **host** for each pending join
+  /// request.  Each card shows the requester's profile image, display name,
+  /// full name, class/group name, and role, with Confirm (green) and
+  /// Deny (red) buttons.
+  Widget _buildJoinRequestBanners() {
+    return AnimatedBuilder(
+      animation: _p2pController,
+      builder: (context, _) {
+        // Only the host sees join requests.
+        if (_p2pController.role != P2pSessionRole.host) {
+          return const SizedBox.shrink();
+        }
+
+        final requests = _p2pController.pendingJoinRequests;
+        if (requests.isEmpty) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final request in requests)
+              _JoinRequestBanner(
+                request: request,
+                onApprove: () => _p2pController.approveJoinRequest(request),
+                onDeny: () => _p2pController.denyJoinRequest(request),
+              ),
+          ],
         );
       },
     );
@@ -837,5 +891,102 @@ class _ChatPageState extends State<ChatPage> {
       default:
         return 'application/octet-stream';
     }
+  }
+}
+
+/// A non-blocking banner card shown at the top of the chat page when a
+/// peer requests to join a private conversation that requires host approval.
+///
+/// Displays the requester's profile image, display name, full name (if
+/// available), class/group name (if available), and role.  Provides green
+/// Confirm and red Deny action buttons.
+class _JoinRequestBanner extends StatelessWidget {
+  const _JoinRequestBanner({
+    required this.request,
+    required this.onApprove,
+    required this.onDeny,
+  });
+
+  final JoinRequest request;
+  final VoidCallback onApprove;
+  final VoidCallback onDeny;
+
+  @override
+  Widget build(BuildContext context) {
+    final identity = request.toPeerIdentity();
+    final theme = Theme.of(context);
+
+    // Build subtitle parts: full name, group/class name, role.
+    final subtitleParts = <String>[];
+    if (request.fullName != null && request.fullName!.isNotEmpty) {
+      subtitleParts.add(request.fullName!);
+    }
+    if (request.groupName != null && request.groupName!.isNotEmpty) {
+      subtitleParts.add(request.groupName!);
+    }
+    if (request.role != null && request.role!.isNotEmpty) {
+      subtitleParts.add(
+        UserRole.values
+            .firstWhere(
+              (e) => e.name == request.role,
+              orElse: () => UserRole.other,
+            )
+            .displayName,
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Card(
+        color: theme.colorScheme.surfaceContainerHighest,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              ProfileAvatar(identity: identity, size: 44),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${request.displayName} wants to join',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    if (subtitleParts.isNotEmpty)
+                      Text(
+                        subtitleParts.join(' · '),
+                        style: theme.textTheme.bodySmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton.filled(
+                icon: const Icon(Icons.close, size: 20),
+                tooltip: 'Deny',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: onDeny,
+              ),
+              const SizedBox(width: 4),
+              IconButton.filled(
+                icon: const Icon(Icons.check, size: 20),
+                tooltip: 'Confirm',
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                ),
+                onPressed: onApprove,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

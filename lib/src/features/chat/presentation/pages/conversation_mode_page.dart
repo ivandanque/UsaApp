@@ -10,6 +10,7 @@ import '../../../p2p/data/services/p2p_service.dart';
 import '../../../p2p/presentation/controllers/p2p_session_controller.dart';
 import '../../data/datasources/drift_conversation_data_source.dart';
 import '../../domain/entities/conversation.dart';
+import '../../../../core/models/join_request.dart';
 import 'chat_page.dart';
 import '../../../../app/routes/app_route_names.dart';
 
@@ -173,6 +174,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
     Conversation? conversation;
     bool isPrivate = false;
     String? passwordHash;
+    bool requiresApproval = false;
 
     if (preferActiveConversation) {
       final activeId = _controller.activeConversationId;
@@ -195,6 +197,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
           isPrivate = true;
           passwordHash ??= _controller.activeConversationPasswordHash;
         }
+        requiresApproval = _controller.activeConversationRequiresApproval;
       }
     }
 
@@ -212,6 +215,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
         isPrivate = true;
         passwordHash ??= _controller.activeConversationPasswordHash;
       }
+      requiresApproval = _controller.activeConversationRequiresApproval;
     }
 
     if (conversation == null) {
@@ -223,6 +227,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
       conversation = result.conversation;
       isPrivate = result.isPrivate;
       passwordHash = result.passwordHash;
+      requiresApproval = result.requiresApproval;
     }
 
     final conversationToOpen = conversation;
@@ -257,12 +262,35 @@ class _ConversationModePageState extends State<ConversationModePage> {
         _refreshSelectedConversation();
         return;
       }
+
+      // If approval is required, send a join request and wait for the host
+      if (requiresApproval) {
+        _controller.sendJoinRequest();
+        if (!mounted) return;
+        final approved = await _showApprovalWaitingDialog();
+        if (!mounted) return;
+        if (approved == false) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('The host denied your join request.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          _refreshSelectedConversation();
+          return;
+        }
+        if (approved != true) {
+          _refreshSelectedConversation();
+          return;
+        }
+      }
     }
 
     _controller.setActiveConversation(
       conversationToOpen,
       isPrivate: isPrivate,
       passwordHash: passwordHash,
+      requiresApproval: requiresApproval,
     );
 
     if (!mounted) {
@@ -283,6 +311,19 @@ class _ConversationModePageState extends State<ConversationModePage> {
     return showDialog<String>(
       context: context,
       builder: (context) => const _PasswordPromptDialog(),
+    );
+  }
+
+  /// Shows a non-dismissible dialog while the client waits for the host
+  /// to confirm or deny the join request.  Returns `true` when approved,
+  /// `false` when denied, and `null` when the user cancels manually.
+  Future<bool?> _showApprovalWaitingDialog() {
+    return showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _ApprovalWaitingDialog(controller: _controller);
+      },
     );
   }
 
@@ -351,7 +392,14 @@ class _ConversationModePageState extends State<ConversationModePage> {
     }
   }
 
-  Future<({Conversation conversation, bool isPrivate, String? passwordHash})?>
+  Future<
+    ({
+      Conversation conversation,
+      bool isPrivate,
+      String? passwordHash,
+      bool requiresApproval,
+    })?
+  >
   _showConversationPicker() async {
     final result = await showModalBottomSheet<dynamic>(
       context: context,
@@ -371,6 +419,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
         conversation: result,
         isPrivate: result.isPrivate,
         passwordHash: result.passwordHash,
+        requiresApproval: false,
       );
     } else {
       return result
@@ -378,6 +427,7 @@ class _ConversationModePageState extends State<ConversationModePage> {
             Conversation conversation,
             bool isPrivate,
             String? passwordHash,
+            bool requiresApproval,
           });
     }
   }
@@ -524,6 +574,7 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
         conversation: conversation,
         isPrivate: details.isPrivate,
         passwordHash: passwordHash,
+        requiresApproval: details.requiresApproval,
       ));
     } finally {
       if (mounted) {
@@ -538,9 +589,13 @@ class _ConversationPickerSheetState extends State<_ConversationPickerSheet> {
     return digest.toString();
   }
 
-  Future<({String name, bool isPrivate, String? password})?>
+  Future<
+    ({String name, bool isPrivate, String? password, bool requiresApproval})?
+  >
   _promptForConversationDetails() async {
-    return showDialog<({String name, bool isPrivate, String? password})>(
+    return showDialog<
+      ({String name, bool isPrivate, String? password, bool requiresApproval})
+    >(
       context: context,
       builder: (context) => const _ConversationDetailsDialog(
         title: 'Create new chat',
@@ -739,6 +794,7 @@ class _ConversationDetailsDialogState
   late final TextEditingController _nameController;
   late final TextEditingController _passwordController;
   bool _isPrivate = false;
+  bool _requiresApproval = false;
   String _currentName = '';
   String _currentPassword = '';
   bool _obscurePassword = true;
@@ -766,6 +822,7 @@ class _ConversationDetailsDialogState
       name: trimmedName,
       isPrivate: _isPrivate,
       password: _isPrivate ? _currentPassword : null,
+      requiresApproval: _isPrivate && _requiresApproval,
     ));
   }
 
@@ -835,6 +892,28 @@ class _ConversationDetailsDialogState
                 onChanged: (value) => setState(() => _currentPassword = value),
                 onSubmitted: (_) => _canSubmit ? _submit() : null,
               ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Require approval to join',
+                      style: Theme.of(context).textTheme.bodyLarge,
+                    ),
+                  ),
+                  Switch(
+                    value: _requiresApproval,
+                    onChanged: (value) =>
+                        setState(() => _requiresApproval = value),
+                  ),
+                ],
+              ),
+              if (_requiresApproval)
+                Text(
+                  'You will need to confirm or deny each user '
+                  'who enters the password before they can join.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
             ],
           ],
         ),
@@ -1204,6 +1283,86 @@ class _PasswordPromptDialogState extends State<_PasswordPromptDialog> {
         FilledButton(
           onPressed: _currentPassword.isEmpty ? null : _submit,
           child: const Text('Join'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dialog shown to the **client** while waiting for the host to approve
+/// or deny the join request.  Auto-pops with `true` / `false` once the
+/// controller reports the outcome.
+class _ApprovalWaitingDialog extends StatefulWidget {
+  const _ApprovalWaitingDialog({required this.controller});
+
+  final P2pSessionController controller;
+
+  @override
+  State<_ApprovalWaitingDialog> createState() => _ApprovalWaitingDialogState();
+}
+
+class _ApprovalWaitingDialogState extends State<_ApprovalWaitingDialog> {
+  /// Guard to prevent multiple pops.  The controller's listener fires on
+  /// every `notifyListeners()`, so without this flag the dialog could be
+  /// popped more than once — the second pop would remove the page behind
+  /// the dialog, sending the user back to the main menu (ISSUE 2).
+  bool _hasPopped = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  @override
+  void dispose() {
+    widget.controller.removeListener(_onControllerChanged);
+    super.dispose();
+  }
+
+  void _onControllerChanged() {
+    if (_hasPopped) return;
+    final status = widget.controller.joinApprovalStatus;
+    if (status == null) return;
+    if (!mounted) return;
+
+    switch (status) {
+      case JoinApprovalStatus.approved:
+        _hasPopped = true;
+        Navigator.of(context).pop(true);
+        break;
+      case JoinApprovalStatus.denied:
+        _hasPopped = true;
+        Navigator.of(context).pop(false);
+        break;
+      case JoinApprovalStatus.pending:
+        break;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Waiting for approval'),
+      content: const Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text(
+            'The host needs to approve your join request. '
+            'Please wait...',
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            widget.controller.cancelJoinRequest();
+            Navigator.of(context).pop(null);
+          },
+          child: const Text('Cancel'),
         ),
       ],
     );
