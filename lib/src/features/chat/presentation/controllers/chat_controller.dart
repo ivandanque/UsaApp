@@ -300,10 +300,9 @@ class ChatController extends ChangeNotifier {
             );
             notifyListeners();
 
-            // Auto-download any attachments that have transport info but no
-            // local file yet (e.g. from history sync).  This runs on every
-            // DB watch emission but _downloadingAttachmentIds prevents
-            // duplicate download attempts.
+            // Auto-download only recent attachments that have transport info
+            // but no local file yet. This avoids download storms when a
+            // client joins and receives large history sync batches.
             _checkPendingAttachmentDownloads();
           },
           onError: (Object error, StackTrace? stack) {
@@ -317,11 +316,20 @@ class ChatController extends ChangeNotifier {
   }
 
   /// Scan loaded messages for undownloaded attachments that have transport
-  /// info (senderHostIp + senderPort) and trigger downloads.  This covers
-  /// history-synced messages whose download events were emitted before
-  /// ChatPage subscribed to the incoming-messages broadcast stream.
+  /// info (senderHostIp + senderPort) and trigger downloads.
+  ///
+  /// Intentionally limited to recent messages to avoid mass-downloading old
+  /// history attachments when a device joins an existing, long-running room.
   void _checkPendingAttachmentDownloads() {
+    final now = DateTime.now().toUtc();
+    const recentWindow = Duration(minutes: 3);
+
     for (final vm in _messages) {
+      final messageAge = now.difference(vm.sentAt.toUtc());
+      if (messageAge > recentWindow) {
+        continue;
+      }
+
       for (final att in vm.attachments) {
         if (att.uri.isEmpty &&
             att.senderHostIp != null &&

@@ -802,9 +802,7 @@ class _ChatPageState extends State<ChatPage> {
     return Padding(
       padding: const EdgeInsets.only(top: 6.0),
       child: GestureDetector(
-        onLongPress: failureCount >= 3
-            ? () => _showFileActionSheet(context, a, message)
-            : null,
+        onLongPress: () => _showFileActionSheet(context, a, message),
         child: Row(
           children: [
             Icon(
@@ -886,7 +884,7 @@ class _ChatPageState extends State<ChatPage> {
             ] else ...[
               ListTile(
                 leading: const Icon(Icons.download),
-                title: Text(failureCount >= 3 ? 'Retry download' : 'Download'),
+                title: Text(failureCount > 0 ? 'Retry download' : 'Download'),
                 onTap: () {
                   Navigator.pop(sheetContext);
                   unawaited(
