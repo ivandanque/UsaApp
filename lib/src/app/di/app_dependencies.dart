@@ -60,7 +60,7 @@ class AppDependencies {
   late PeerIdentity _peerIdentity;
   late final LatencyProbeService _latencyProbeService;
   Map<String, PeerIdentity> _knownPeers = <String, PeerIdentity>{};
-  late final SharedPreferences _sharedPreferences;
+  SharedPreferences? _sharedPreferences;
 
   /// The user's preferred time display format (12h / 24h).
   /// Cached in-memory so the getter never touches _sharedPreferences during
@@ -148,7 +148,7 @@ class AppDependencies {
     _p2pService = P2pService(displayName: _peerIdentity.displayName);
     _latencyProbeService = LatencyProbeService(identity: _peerIdentity);
     _sharedPreferences = await SharedPreferences.getInstance();
-    _timeFormat = TimeFormatService.getPreferenceSync(_sharedPreferences);
+    _timeFormat = TimeFormatService.getPreferenceSync(_sharedPreferences!);
 
     // Optionally create a lightweight in-memory DB + conversation store for
     // tests that need basic persistence without initializing message
@@ -192,14 +192,14 @@ class AppDependencies {
   }
 
   bool get backgroundScanningEnabled =>
-      _sharedPreferences.getBool(_prefBackgroundScanningEnabled) ?? false;
+      _sharedPreferences?.getBool(_prefBackgroundScanningEnabled) ?? false;
   int get scanCadenceSeconds =>
-      _sharedPreferences.getInt(_prefScanCadenceSeconds) ??
+      _sharedPreferences?.getInt(_prefScanCadenceSeconds) ??
       _defaultScanCadenceSeconds;
   bool get vibrationEnabled =>
-      _sharedPreferences.getBool(_prefVibrationEnabled) ?? true;
+      _sharedPreferences?.getBool(_prefVibrationEnabled) ?? true;
   bool get debugMessagesEnabled =>
-      _sharedPreferences.getBool(_prefDebugMessagesEnabled) ?? false;
+      _sharedPreferences?.getBool(_prefDebugMessagesEnabled) ?? false;
 
   /// The user's preferred time display format (12h / 24h).
   TimeFormatPreference get timeFormat => _timeFormat;
@@ -210,7 +210,11 @@ class AppDependencies {
   }
 
   Future<void> setDebugMessagesEnabled(bool value) async {
-    await _sharedPreferences.setBool(_prefDebugMessagesEnabled, value);
+    final prefs = _sharedPreferences;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setBool(_prefDebugMessagesEnabled, value);
   }
 
   // Database and drift data sources
@@ -289,15 +293,27 @@ class AppDependencies {
   }
 
   Future<void> setBackgroundScanningEnabled(bool enabled) async {
-    await _sharedPreferences.setBool(_prefBackgroundScanningEnabled, enabled);
+    final prefs = _sharedPreferences;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setBool(_prefBackgroundScanningEnabled, enabled);
   }
 
   Future<void> setScanCadenceSeconds(int seconds) async {
-    await _sharedPreferences.setInt(_prefScanCadenceSeconds, seconds);
+    final prefs = _sharedPreferences;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setInt(_prefScanCadenceSeconds, seconds);
   }
 
   Future<void> setVibrationEnabled(bool enabled) async {
-    await _sharedPreferences.setBool(_prefVibrationEnabled, enabled);
+    final prefs = _sharedPreferences;
+    if (prefs == null) {
+      return;
+    }
+    await prefs.setBool(_prefVibrationEnabled, enabled);
     // Keep the notification service in sync.
     _notificationService?.vibrationEnabled = () => enabled;
   }
